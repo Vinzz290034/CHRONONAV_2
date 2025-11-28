@@ -1,8 +1,5 @@
 // server.js (Node.js API)
 // This server is configured to listen on PORT 3000.
-// When testing with a mobile emulator (Android/iOS), the Flutter client 
-// MUST use the host machine's IP address (e.g., 10.0.2.2:3000 for Android)
-// instead of 'localhost:3000' to connect successfully.
 
 // ------------------------------------------------------------------------------
 // 1. CONFIGURATION & DEPENDENCIES
@@ -14,11 +11,10 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs'); // File System for deleting orphaned files
+const fs = require('fs'); 
 
-const app = express();
+const app = express(); // Main Express application instance
 const PORT = 3000;
-// CRITICAL: For production, this MUST be loaded from environment variables!
 const JWT_SECRET = 'YOUR_SUPER_SECURE_SECRET_KEY_12345'; 
 
 // ------------------------------------------------------------------------------
@@ -26,16 +22,17 @@ const JWT_SECRET = 'YOUR_SUPER_SECURE_SECRET_KEY_12345';
 // ------------------------------------------------------------------------------
 
 /**
- *  Utility function to get the base INSERT query for the add_pdf table
+ * Utility function to get the base INSERT query for the add_pdf table
+ * 🎯 UPDATED: Changed 'location' to 'room' in the query columns.
  */
-
 const getScheduleInsertQuery = () => `
     INSERT INTO add_pdf
-    (schedule_code, title, description, schedule_type, start_date, end_date, start_time, end_time, day_of_week, repeat_frequency, location, user_id)
+    (schedule_code, title, description, schedule_type, start_date, end_date, start_time, end_time, day_of_week, repeat_frequency, room, user_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `;
 
 // Utility function to prepare the values array for a single schedule entry
+// 🎯 UPDATED: Changed 'entry.location' to 'entry.room' and 'location || null' to 'room || null'.
 const extractScheduleValues = (entry, userId) => [
     entry.schedule_code,
     entry.title,
@@ -47,16 +44,53 @@ const extractScheduleValues = (entry, userId) => [
     entry.end_time || null,
     entry.day_of_week || null,
     entry.repeat_frequency,
-    entry.location || null,
+    entry.room || null, // MUST use 'room' now
     userId,
 ];
+
+
+
+/**
+ * Placeholder for the actual PDF parsing logic.
+ * 🎯 UPDATED: Changed mock data key from 'location' to 'room'.
+ */
+const extractSchedulesFromPdf = async (filePath) => {
+    // Console log the starting point for tracking
+    console.log(`⏳ Starting schedule extraction for file: ${filePath}`);
+    
+    // --- Mock Extracted Data (Return actual extracted data here) ---
+    return [
+        { 
+            schedule_code: 'MOCK-001', 
+            title: 'Extracted Class A', 
+            schedule_type: 'class', 
+            start_date: '2025-12-10', 
+            start_time: '09:00:00', 
+            repeat_frequency: 'weekly',
+            description: 'Section 101 Lecture.',
+            room: 'Room 305' // Added mock room
+        },
+        { 
+            schedule_code: 'MOCK-002', 
+            title: 'Extracted Final Exam Review', 
+            schedule_type: 'meeting', 
+            start_date: '2025-12-15', 
+            end_date: '2025-12-15',
+            start_time: '14:00:00', 
+            end_time: '16:00:00',
+            repeat_frequency: 'none',
+            room: 'Main Auditorium' // Changed key from location to room
+        },
+    ];
+};
 
 /**
  * Standardized function for logging and responding to server errors (500).
  */
 const handleServerError = (res, error, message = 'Internal server error.') => {
-    console.error(`❌ ${message}`, error);
-    res.status(500).json({ success: false, message: `Server error: ${message}`, error: error.message });
+    // CRITICAL: Log the actual error stack for debugging
+    console.error(`❌ ${message}`, error.stack || error); 
+    res.status(500).json({ success: false, message: `Server error: ${message}`, error_detail: error.message });
 };
 
 /**
@@ -64,9 +98,9 @@ const handleServerError = (res, error, message = 'Internal server error.') => {
  */
 const formatPhotoUrl = (dbPath) => {
     if (!dbPath) return null;
-    // Replace OS-specific path separators with forward slashes for URL consistency
     const cleanPath = dbPath.replace(/\\/g, '/');
-    return `http://localhost:${PORT}/${cleanPath}`;
+    // NOTE: This assumes the client can reach localhost:3000. Use 10.0.2.2 for Android emulator.
+    return `http://localhost:${PORT}/${cleanPath}`; 
 };
 
 /**
@@ -74,12 +108,10 @@ const formatPhotoUrl = (dbPath) => {
  */
 const deleteOldProfilePhoto = async (userId, connection) => {
     try {
-        // Query the database for the current profile image path
         const [results] = await connection.query('SELECT profile_img FROM users WHERE id = ?', [userId]);
         const oldRelativePath = results[0]?.profile_img; 
 
         if (oldRelativePath && !oldRelativePath.includes('default-avatar.png')) {
-            // Construct the absolute path from the stored relative path
             const absolutePath = path.join(__dirname, oldRelativePath); 
 
             if (fs.existsSync(absolutePath)) {
@@ -91,7 +123,6 @@ const deleteOldProfilePhoto = async (userId, connection) => {
         }
     } catch (error) {
         console.error('Error deleting old profile photo:', error);
-        // Do not throw, as profile update should still proceed if file deletion fails
     }
 };
 
@@ -102,7 +133,7 @@ const pool = mysql.createPool({
     connectionLimit: 10,
     host: 'localhost',
     user: 'root',
-    password: '', // Should be loaded from environment variable
+    password: '', 
     database: 'chrononav_web_doss',
     waitForConnections: true,
     queueLimit: 0,
@@ -116,7 +147,8 @@ const pool = mysql.createPool({
         connection.release();
     } catch (err) {
         console.error('❌ FATAL ERROR: Could not connect to database:', err.stack);
-        process.exit(1); 
+        // Process exit commented out for interactive environments but required for critical production servers
+        // process.exit(1); 
     }
 })();
 
@@ -142,6 +174,7 @@ const verifyToken = (req, res, next) => {
     jwt.verify(token, JWT_SECRET, (err, user) => {
         if (err) {
             // Handle both expired and invalid token errors
+            console.error('JWT Verification Failed:', err); // Log JWT error details
             return res.status(403).json({ message: 'Error: Invalid or expired token.' });
         }
         req.user = user;
@@ -149,10 +182,9 @@ const verifyToken = (req, res, next) => {
     });
 };
 
-// Multer Storage Configuration
+// --- Multer Storage Configuration for Profile Photos ---
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        // Ensure this directory path exists
         const dir = 'uploads/profile_photos/';
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
@@ -160,20 +192,64 @@ const storage = multer.diskStorage({
         cb(null, dir);
     },
     filename: (req, file, cb) => {
-        // NOTE: req.user should be available due to the route structure
         const userId = req.user.id; 
         const fileExtension = path.extname(file.originalname);
         cb(null, `${userId}-${Date.now()}${fileExtension}`); 
     }
 });
 
-// Define the 'upload' variable for single file uploads
-// NOTE: This is used *after* verifyToken in profile routes, so req.user is available.
 const upload = multer({ 
     storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 } // Limit file size to 5MB
+    limits: { fileSize: 5 * 1024 * 1024 } 
 });
 
+
+// --- NEW: Multer Storage Configuration for Schedule PDFs ---
+const schedulePdfStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const dir = 'uploads/temp_schedules/'; // Temporary directory for PDFs
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+        const userId = req.user.id; 
+        const fileExtension = path.extname(file.originalname);
+        cb(null, `schedule-pdf-${userId}-${Date.now()}${fileExtension}`); 
+    }
+});
+// server.js (Section 4: MIDDLEWARE SETUP)
+
+// server.js (Section 4: MIDDLEWARE SETUP)
+
+const uploadSchedulePdf = multer({ 
+    storage: schedulePdfStorage,
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+    fileFilter: (req, file, cb) => {
+        const mimeTypeAccepted = (
+            file.mimetype === 'application/pdf' || 
+            file.mimetype.startsWith('image/') // Allows any standard image type (jpg, png, webp, gif, etc.)
+        );
+        
+        // Fallback check using file extension (more reliable on some platforms)
+        const fileExtension = path.extname(file.originalname).toLowerCase();
+        const extensionAccepted = (
+            fileExtension === '.pdf' ||
+            fileExtension === '.jpg' ||
+            fileExtension === '.jpeg' ||
+            fileExtension === '.png' ||
+            fileExtension === '.gif' ||
+            fileExtension === '.webp'
+        );
+
+        if (mimeTypeAccepted || extensionAccepted) {
+            cb(null, true);
+        } else {
+            cb(new Error('Only PDF or common image files (JPG/PNG/GIF/WEBP) are allowed.'), false); 
+        }
+    }
+});
 
 // ------------------------------------------------------------------------------
 // 5. API ENDPOINTS
@@ -181,6 +257,7 @@ const upload = multer({
 
 // POST /api/login: User login endpoint
 app.post('/api/login', async (req, res) => {
+// ... [Login logic unchanged]
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -237,6 +314,7 @@ app.post('/api/login', async (req, res) => {
 
 // POST /api/register: User registration endpoint
 app.post('/api/register', async (req, res) => {
+// ... [Registration logic unchanged]
     const { fullname, email, password, role, course, department } = req.body;
 
     if (!fullname || !email || !password || !role || !course || !department) {
@@ -252,7 +330,6 @@ app.post('/api/register', async (req, res) => {
 
         const hashedPassword = await bcrypt.hash(password, 10);
         
-        // Define default profile image path relative to server root
         const defaultProfileImg = 'uploads/profile_photos/default-avatar.png'; 
         
         const insertQuery = `INSERT INTO users (name, email, password, role, course, department, profile_img, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, 1)`;
@@ -290,6 +367,7 @@ app.post('/api/register', async (req, res) => {
 
 // GET /api/profile: Fetch user profile
 app.get('/api/profile', verifyToken, async (req, res) => {
+// ... [Profile logic unchanged]
     try {
         const query = 'SELECT id, name, email, role, course, department, profile_img FROM users WHERE id = ?';
         const [results] = await pool.query(query, [req.user.id]);
@@ -300,7 +378,6 @@ app.get('/api/profile', verifyToken, async (req, res) => {
         
         const user = results[0];
         
-        // Construct the public photo_url and clean up the raw path
         user.photo_url = formatPhotoUrl(user.profile_img);
         delete user.profile_img; 
 
@@ -313,18 +390,17 @@ app.get('/api/profile', verifyToken, async (req, res) => {
 
 // POST /api/profile (Handles update & file upload)
 app.post('/api/profile', verifyToken, upload.single('profilePhoto'), async (req, res) => {
+// ... [Profile update logic unchanged]
     const userId = req.user.id;
     const { name, course, department } = req.body;
     const file = req.file; 
 
-    // Utility to clean up file if an error occurs
     const cleanUpFile = (f) => {
         if (f && fs.existsSync(f.path)) { fs.unlinkSync(f.path); }
     };
 
-    // 1. Basic Validation
     if (!name || !course || !department) {
-        cleanUpFile(file); // Delete orphaned file
+        cleanUpFile(file);
         return res.status(400).json({ message: 'Full Name, Course, and Department are required fields.' });
     }
 
@@ -336,11 +412,9 @@ app.post('/api/profile', verifyToken, upload.single('profilePhoto'), async (req,
         let updateQuery = 'UPDATE users SET name = ?, course = ?, department = ?';
         let queryParams = [name, course, department];
         
-        // 2. Handle File Upload
         if (file) {
             await deleteOldProfilePhoto(userId, connection);
             
-            // Prepare the new relative path for the database
             const profileImgPath = path.join('uploads', 'profile_photos', file.filename).replace(/\\/g, '/');
             
             updateQuery += ', profile_img = ?';
@@ -350,11 +424,9 @@ app.post('/api/profile', verifyToken, upload.single('profilePhoto'), async (req,
         updateQuery += ' WHERE id = ?';
         queryParams.push(userId);
 
-        // 3. Execute the update
         await connection.query(updateQuery, queryParams);
         await connection.commit();
 
-        // 4. Fetch the updated profile data
         const [updatedUserResults] = await connection.query(
             'SELECT id, name, email, role, course, department, profile_img FROM users WHERE id = ?', 
             [userId]
@@ -364,7 +436,6 @@ app.post('/api/profile', verifyToken, upload.single('profilePhoto'), async (req,
         updatedUser.photo_url = formatPhotoUrl(updatedUser.profile_img);
         delete updatedUser.profile_img; 
 
-        // 5. Success Response
         return res.status(200).json({ 
             message: 'Profile updated successfully!', 
             user: updatedUser 
@@ -382,6 +453,7 @@ app.post('/api/profile', verifyToken, upload.single('profilePhoto'), async (req,
 
 // POST /api/user/change-password: Change user password
 app.post('/api/user/change-password', verifyToken, async (req, res) => {
+// ... [Password change logic unchanged]
     const userId = req.user.id; 
     const { currentPassword, newPassword } = req.body; 
 
@@ -419,6 +491,7 @@ app.post('/api/user/change-password', verifyToken, async (req, res) => {
 
 // POST /api/user/deactivate: Logically deactivate user account
 app.post('/api/user/deactivate', verifyToken, async (req, res) => {
+// ... [Deactivate logic unchanged]
     const userId = req.user.id; 
     const { currentPassword } = req.body; 
 
@@ -456,10 +529,10 @@ app.post('/api/user/deactivate', verifyToken, async (req, res) => {
 
 // POST /api/feedback: Handles user feedback submission
 app.post('/api/feedback', verifyToken, async (req, res) => {
+// ... [Feedback logic unchanged]
     const userId = req.user.id; 
     const { subject, message, feedback_type, rating } = req.body;
 
-    // Check for null/undefined on rating
     if (!subject || !message || !feedback_type || rating == null) { 
         return res.status(400).json({ message: 'Subject, message, feedback type, and rating are required.' });
     }
@@ -487,6 +560,7 @@ app.post('/api/feedback', verifyToken, async (req, res) => {
  * POST /api/tickets: Creates a new support ticket.
  */
 app.post('/api/tickets', verifyToken, async (req, res) => {
+// ... [Ticket creation logic unchanged]
     const userId = req.user.id; 
     const { subject, message } = req.body;
 
@@ -509,7 +583,6 @@ app.post('/api/tickets', verifyToken, async (req, res) => {
         
         const newTicket = rows[0];
 
-        // Format dates to ISO string for Flutter compatibility
         if (newTicket.created_at) newTicket.created_at = new Date(newTicket.created_at).toISOString();
         if (newTicket.updated_at) newTicket.updated_at = new Date(newTicket.updated_at).toISOString();
 
@@ -527,6 +600,7 @@ app.post('/api/tickets', verifyToken, async (req, res) => {
  * GET /api/tickets: Fetches all tickets submitted by the authenticated user.
  */
 app.get('/api/tickets', verifyToken, async (req, res) => {
+// ... [Ticket fetch logic unchanged]
     const userId = req.user.id; 
 
     try {
@@ -534,7 +608,6 @@ app.get('/api/tickets', verifyToken, async (req, res) => {
         
         const [rows] = await pool.query(query, [userId]);
         
-        // Format dates to ISO string for Flutter compatibility
         const tickets = rows.map(ticket => ({
             ...ticket,
             created_at: ticket.created_at ? new Date(ticket.created_at).toISOString() : null,
@@ -552,6 +625,7 @@ app.get('/api/tickets', verifyToken, async (req, res) => {
 // ANNOUNCEMENT ROUTES
 // ------------------------------------------------------------------------------
 app.get('/api/announcements', async (req, res) => {
+// ... [Announcement logic unchanged]
     try {
         const query = `
             SELECT 
@@ -567,7 +641,6 @@ app.get('/api/announcements', async (req, res) => {
         
         const [rows] = await pool.query(query.trim());
 
-        // Process the results: convert date objects to ISO strings
         const announcements = rows.map(announcement => {
             const publishedAtISO = announcement.published_at 
                 ? new Date(announcement.published_at).toISOString() 
@@ -597,12 +670,69 @@ app.get('/api/announcements', async (req, res) => {
 // SCHEDULE ROUTES (add_pdf table)
 // ------------------------------------------------------------------------------
 
+// POST /api/upload/schedule_file: NEW ROUTE to handle PDF upload and extraction
+app.post('/api/upload/schedule_file', verifyToken, uploadSchedulePdf.single('schedule_file'), async (req, res) => {
+    const userId = req.user.id;
+
+    if (!req.file) {
+        // Check if Multer threw an error (e.g., file size or type)
+        if (req.fileValidationError) {
+            return res.status(400).json({ success: false, message: req.fileValidationError });
+        }
+        return res.status(400).json({ success: false, message: 'No PDF file was uploaded or file type is invalid (must be PDF).' });
+    }
+
+    const filePath = req.file.path;
+
+    // Helper to remove the temp file
+    const cleanupFile = () => {
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            console.log(`🗑️ Cleaned up temporary file: ${filePath}`);
+        }
+    };
+
+    try {
+        // 1. Extract data from the PDF
+        const extractedSchedules = await extractSchedulesFromPdf(filePath);
+        
+        // 2. Cleanup the temporary PDF file immediately after processing
+        cleanupFile();
+
+        if (extractedSchedules.length === 0) {
+             return res.status(200).json({ 
+                success: true, 
+                message: 'PDF processed, but no schedules were extracted.',
+                extracted_count: 0,
+                schedules: []
+            });
+        }
+        
+        // 3. Return the extracted data to the client (for review before bulk_save)
+        return res.status(200).json({ 
+            success: true, 
+            message: `${extractedSchedules.length} schedules extracted successfully. Ready for saving.`, 
+            extracted_count: extractedSchedules.length,
+            // The JSON returned here will automatically use 'room' if extractSchedulesFromPdf does.
+            schedules: extractedSchedules 
+        });
+
+    } catch (error) {
+        cleanupFile(); // Ensure cleanup on error
+        // Check for Multer file filter error specifically
+        if (error.message === 'Only PDF files are allowed.') {
+            return res.status(400).json({ success: false, message: error.message });
+        }
+        return handleServerError(res, error, 'Schedule PDF Processing Error');
+    }
+});
+
 // POST /api/upload_schedule: Uploads a single schedule entry (manual form submission)
 app.post('/api/upload_schedule', verifyToken, async (req, res) => {
+// ... [Upload schedule logic unchanged]
     const userId = req.user.id;
-    const entry = req.body;
+    const entry = req.body; // Expects 'room' field from client
 
-    // Validate required fields
     if (!entry.schedule_code || !entry.title || !entry.schedule_type || !entry.start_date || !entry.start_time || !entry.repeat_frequency) {
         return res.status(400).json({
             success: false,
@@ -611,7 +741,7 @@ app.post('/api/upload_schedule', verifyToken, async (req, res) => {
     }
 
     const query = getScheduleInsertQuery();
-    const values = extractScheduleValues(entry, userId);
+    const values = extractScheduleValues(entry, userId); // Uses updated values function
 
     try {
         const [results] = await pool.execute(query, values);
@@ -628,9 +758,9 @@ app.post('/api/upload_schedule', verifyToken, async (req, res) => {
 
 // POST /api/schedules/bulk_save: Bulk save schedules extracted from PDF
 app.post('/api/schedules/bulk_save', verifyToken, async (req, res) => {
+// ... [Bulk save logic unchanged]
     const userId = req.user.id;
-    // The data is expected to be under the 'schedules' key as sent by the Flutter app
-    const scheduleEntries = req.body.schedules;
+    const scheduleEntries = req.body.schedules; // Each entry must contain 'room'
 
     if (!scheduleEntries || !Array.isArray(scheduleEntries) || scheduleEntries.length === 0) {
         return res.status(400).json({
@@ -639,7 +769,7 @@ app.post('/api/schedules/bulk_save', verifyToken, async (req, res) => {
         });
     }
 
-    const insertQuery = getScheduleInsertQuery();
+    const insertQuery = getScheduleInsertQuery(); // Uses query with 'room'
     let connection;
     let insertedCount = 0;
     
@@ -648,13 +778,12 @@ app.post('/api/schedules/bulk_save', verifyToken, async (req, res) => {
         await connection.beginTransaction();
 
         for (const entry of scheduleEntries) {
-            // Basic validation for required fields in each entry
             if (!entry.schedule_code || !entry.title || !entry.schedule_type || !entry.start_date || !entry.start_time || !entry.repeat_frequency) {
                 console.warn('Skipping schedule entry due to missing required fields:', entry);
                 continue; 
             }
 
-            const values = extractScheduleValues(entry, userId);
+            const values = extractScheduleValues(entry, userId); // Uses updated values function
             const [results] = await connection.execute(insertQuery, values);
             
             if (results.affectedRows === 1) {
@@ -682,28 +811,30 @@ app.post('/api/schedules/bulk_save', verifyToken, async (req, res) => {
 });
 
 
-// GET /api/schedules: Fetch All Uploaded Schedules
+// GET /api/schedules: Fetch All Uploaded Schedules for the current user
 app.get('/api/schedules', verifyToken, async (req, res) => {
+    // 🎯 CRITICAL FIX: Get the authenticated user ID
+    const userId = req.user.id; 
+
     try {
         const query = `
             SELECT 
-                ap.*, 
+                ap.id, ap.schedule_code, ap.title, ap.description, ap.schedule_type, ap.start_date, ap.end_date, ap.start_time, ap.end_time, ap.day_of_week, ap.repeat_frequency, ap.room, ap.user_id, ap.is_active, ap.created_at, ap.updated_at,
                 u.name as uploader_name
             FROM add_pdf ap
             JOIN users u ON ap.user_id = u.id
+            WHERE ap.user_id = ?  /* <--- CRITICAL FILTER: ONLY FETCH USER'S SCHEDULES */
             ORDER BY ap.created_at DESC
         `;
         
-        const [schedules] = await pool.query(query.trim());
+        // Pass the userId to the query executor
+        const [schedules] = await pool.query(query.trim(), [userId]); 
 
-        // Format dates/times to ISO strings for Flutter compatibility
         const formattedSchedules = schedules.map(schedule => ({
             ...schedule,
-            // Format DATE types to YYYY-MM-DD
             created_at: schedule.created_at ? new Date(schedule.created_at).toISOString() : null,
             start_date: schedule.start_date ? new Date(schedule.start_date).toISOString().split('T')[0] : null,
             end_date: schedule.end_date ? new Date(schedule.end_date).toISOString().split('T')[0] : null,
-            // Time fields (start_time, end_time) are assumed to be strings and are returned as is.
         }));
 
         res.status(200).json({
@@ -715,6 +846,63 @@ app.get('/api/schedules', verifyToken, async (req, res) => {
         return handleServerError(res, error, 'Error fetching schedules');
     }
 });
+
+// PUT /api/schedules/update/:id: Update a single schedule entry
+app.put('/api/schedules/update/:id', verifyToken, async (req, res) => {
+    const userId = req.user.id;
+    const scheduleId = req.params.id; // Get the ID from the URL parameter
+    const entry = req.body;
+
+    // Minimal validation to ensure essential fields exist
+    // NOTE: This validation is fine, assuming the Flutter app ensures these fields are present/non-null.
+    if (!entry.schedule_code || !entry.title || !entry.schedule_type || !entry.start_date || !entry.start_time || !entry.repeat_frequency) {
+        return res.status(400).json({
+            success: false,
+            message: 'Missing required schedule fields for update.'
+        });
+    }
+
+    const updateQuery = `
+        UPDATE add_pdf
+        SET 
+            schedule_code = ?, title = ?, description = ?, schedule_type = ?, 
+            start_date = ?, end_date = ?, start_time = ?, end_time = ?, 
+            day_of_week = ?, repeat_frequency = ?, room = ?
+        WHERE id = ? AND user_id = ?
+    `;
+
+    // CRITICAL: Ensure values match the DB column definitions (NULL or actual value)
+    const values = [
+        entry.schedule_code,
+        entry.title,
+        entry.description || null, // Handles optional description
+        entry.schedule_type,
+        entry.start_date,
+        entry.end_date || null,      // Handles optional end_date
+        entry.start_time,
+        entry.end_time || null,      // Handles optional end_time
+        entry.day_of_week || null,   // Handles optional day_of_week
+        entry.repeat_frequency,
+        entry.room || null,          // Handles optional room
+        scheduleId, // The ID from the URL
+        userId // Ensure the user owns this record
+    ];
+
+    try {
+        const [results] = await pool.execute(updateQuery, values);
+
+        if (results.affectedRows === 0) {
+            // This is the line returning the 404. It means (ID or USER_ID) mismatch.
+            return res.status(404).json({ success: false, message: 'Schedule entry not found or unauthorized to update.' });
+        }
+
+        return res.status(200).json({ success: true, message: 'Schedule updated successfully!' });
+    } catch (error) {
+        // Ensure you use the robust error handler
+        return handleServerError(res, error, 'Database update error for edit_schedule');
+    }
+});
+
 
 // ------------------------------------------------------------------------------
 // PERSONAL CALENDAR EVENT ROUTES (user_calendar_events table)
@@ -755,9 +943,10 @@ app.post('/api/events/personal', verifyToken, async (req, res) => {
     }
 });
 
-// GET /api/events/personal: Fetch Personal Events Route
+// GET /api/events/personal: Fetch Personal Events Route (REVERTED to PROTECTED with DATE FIX)
 app.get('/api/events/personal', verifyToken, async (req, res) => {
-    const userId = req.user.id;
+    // Requires a valid JWT token to proceed.
+    const userId = req.user.id; 
     
     // Selects all relevant fields from the user_calendar_events table
     const fetchQuery = `
@@ -770,13 +959,26 @@ app.get('/api/events/personal', verifyToken, async (req, res) => {
     try {
         const [events] = await pool.query(fetchQuery, [userId]);
         
-        // Formats the date fields (start_date, end_date) into ISO 8601 strings
-        // for consistent parsing by the Flutter client.
-        const formattedEvents = events.map(event => ({
-            ...event,
-            start_date: event.start_date ? new Date(event.start_date).toISOString() : null,
-            end_date: event.end_date ? new Date(event.end_date).toISOString() : null,
-        }));
+        // Robust Date Formatting
+        const formattedEvents = events.map(event => {
+            const rawStartDate = event.start_date;
+            const rawEndDate = event.end_date;
+
+            const safeToISO = (rawDateValue) => {
+                if (!rawDateValue) return null;
+                const dateObj = new Date(rawDateValue);
+                // Check if the object is a Date and is not "Invalid Date"
+                return dateObj instanceof Date && !isNaN(dateObj.getTime()) 
+                    ? dateObj.toISOString() 
+                    : null;
+            };
+
+            return {
+                ...event,
+                start_date: safeToISO(rawStartDate),
+                end_date: safeToISO(rawEndDate),
+            };
+        });
 
         // Returns the array of formatted events
         res.json(formattedEvents);
@@ -847,7 +1049,6 @@ app.delete('/api/events/personal/:id', verifyToken, async (req, res) => {
         return handleServerError(res, error, 'Error deleting personal event');
     }
 });
-
 // ------------------------------------------------------------------------------
 // 6. START SERVER
 // ------------------------------------------------------------------------------

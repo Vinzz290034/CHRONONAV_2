@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:developer'; // 🟢 Dart's developer library for logging
+import 'dart:developer';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -7,59 +7,48 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 // --- SERVICE/MODEL IMPORTS ---
 import '../models/announcement.dart';
 import '../models/ticket.dart';
-import '../models/personal_event.dart'; // 💡 Import for PersonalEvent model
+import '../models/personal_event.dart';
+// 🎯 NEW REQUIRED IMPORT
+import '../models/schedule_entry.dart';
 
 // --- Host Configuration ---
-// Set this to your actual host IP for testing.
 const String kApiHost = 'http://10.0.2.2:3000';
-// The host the Node.js server sends back in the photo_url field.
 const String kLocalhostHost = 'http://localhost:3000';
 
 // --- ApiService Class ---
 class ApiService {
-  // Base URL for API endpoints (e.g., http://10.0.2.2:3000/api)
   final String _baseUrl = '$kApiHost/api';
-
-  // Secure storage instance
   final _storage = const FlutterSecureStorage();
 
   // --- Utility Methods (Internal URL Resolution Logic) ---
 
-  /// Handles the core logic of constructing a public image URL,
-  /// replacing server-side 'http://localhost:3000' with the correct
-  /// device-accessible API_HOST and handling relative paths.
   String _resolveUrl(String path) {
     if (path.startsWith(kLocalhostHost)) {
       return path.replaceFirst(kLocalhostHost, kApiHost);
     }
 
     if (!path.startsWith('http')) {
-      // Handle relative path (e.g., /uploads/image.jpg or uploads/image.jpg)
       final cleanPath = path.startsWith('/') ? path.substring(1) : path;
       return '$kApiHost/$cleanPath';
     }
 
-    // If it's already a correct, external http link, return as is
     return path;
   }
 
-  /// Public method required by announcement_screen.dart to resolve image paths.
   String resolveImageUrl(String? imagePath) {
     if (imagePath == null || imagePath.isEmpty) {
-      return ''; // Return empty string if no path is provided
+      return '';
     }
     return _resolveUrl(imagePath);
   }
 
-  /// Public method required by announcement_screen.dart to resolve profile image paths.
   String resolveProfileUrl(String? profileImgPath) {
     if (profileImgPath == null || profileImgPath.isEmpty) {
-      return ''; // Return empty string if no path is provided
+      return '';
     }
     return _resolveUrl(profileImgPath);
   }
 
-  /// Helper to safely decode JSON and provide a fallback error message.
   Map<String, dynamic> _safeDecode(String body, int statusCode) {
     try {
       final decoded = json.decode(body);
@@ -67,10 +56,10 @@ class ApiService {
       if (decoded is Map<String, dynamic>) {
         return decoded;
       }
-      // If the top-level structure is a List (e.g., for fetchUserTickets or fetchAnnouncements),
+      // If the top-level structure is a List (e.g., for fetchUserTickets or fetchAnnouncements, or fetchPersonalEvents),
       // return it wrapped under the key 'list'.
       if (decoded is List<dynamic>) {
-        return {'list': decoded};
+        return {'list': decoded}; // <--- THIS IS THE KEY USED FOR LISTS
       }
       throw const FormatException();
     } on FormatException {
@@ -105,7 +94,6 @@ class ApiService {
     final Map<String, String> headers = {'Authorization': 'Bearer $token'};
 
     if (isJson) {
-      // Only include Content-Type for JSON payloads
       headers['Content-Type'] = 'application/json; charset=UTF-8';
     }
 
@@ -156,8 +144,8 @@ class ApiService {
 
       // Success range (200 OK, 201 Created, 204 No Content)
       if (response.statusCode >= 200 && response.statusCode < 300) {
-        // Return empty map for 204 No Content
         if (response.statusCode == 204) return {};
+        // CRUCIAL: This returns the Map (which may contain the 'list' wrapper key)
         return _safeDecode(response.body, response.statusCode);
       } else {
         String errorMessage = failureMessage;
@@ -165,7 +153,6 @@ class ApiService {
           final errorBody = _safeDecode(response.body, response.statusCode);
           errorMessage = errorBody['message'] ?? errorMessage;
         } catch (_) {
-          // Fallback if response body is not valid JSON
           errorMessage = 'Server error (Status: ${response.statusCode}).';
         }
         throw Exception(errorMessage);
@@ -196,10 +183,8 @@ class ApiService {
 
       Map<String, dynamic> user = data['user'] as Map<String, dynamic>;
 
-      // Ensure photo_url is a full public URL, using the new resolver logic
       final photoPath = user['photo_url'] ?? user['profile_img'];
       if (photoPath is String && photoPath.isNotEmpty) {
-        // Use the internal resolution helper
         user['photo_url'] = _resolveUrl(photoPath);
       }
       user.remove('profile_img');
@@ -248,10 +233,8 @@ class ApiService {
 
       Map<String, dynamic> user = data['user'] as Map<String, dynamic>;
 
-      // Ensure photo_url is processed if present, using the new resolver logic
       final photoPath = user['photo_url'] ?? user['profile_img'];
       if (photoPath is String && photoPath.isNotEmpty) {
-        // Use the internal resolution helper
         user['photo_url'] = _resolveUrl(photoPath);
       }
       user.remove('profile_img');
@@ -266,10 +249,13 @@ class ApiService {
     }
   }
 
+  // lib/services/api_service.dart (Schedule Management Methods)
+
   //------------------------------------------------------------------------
   // --- Schedule Management Methods (Using New Helper) ---
   //------------------------------------------------------------------------
-  /// Uploads extracted schedule data (JSON payload) to the server.
+
+  /// Uploads extracted schedule data (manual form submission) to the server.
   Future<Map<String, dynamic>> uploadSchedule({
     required String scheduleCode,
     required String title,
@@ -281,9 +267,10 @@ class ApiService {
     String? endDate,
     String? endTime,
     String? dayOfWeek,
-    String? location,
+    // 🎯 UPDATED: Changed parameter name from 'location' to 'room'
+    String? room,
   }) async {
-    // 🟢 Refactored to use new helper
+    // NOTE: Assuming _sendAuthenticatedRequest is available in this class
     final response = await _sendAuthenticatedRequest(
       'upload_schedule',
       'POST',
@@ -298,11 +285,11 @@ class ApiService {
         'end_time': endTime,
         'day_of_week': dayOfWeek,
         'repeat_frequency': repeatFrequency,
-        'location': location,
+        // 🎯 UPDATED: Changed JSON key from 'location' to 'room'
+        'room': room,
       },
       failureMessage: 'Failed to upload schedule.',
     );
-    // Assuming the server returns success message or ID in the response body
     return {
       'success': true,
       'message': response['message'],
@@ -310,12 +297,11 @@ class ApiService {
     };
   }
 
-  /// Uploads a PDF file containing schedule data via Multipart form. (Kept separate as it's Multipart)
+  /// Uploads a PDF file containing schedule data via Multipart form.
   Future<Map<String, dynamic>> uploadSchedulePdf(
     File pdfFile,
-    String userId,
+    String userId, // The userId parameter is redundant but kept for now.
   ) async {
-    // Note: The endpoint below should match your server route for file uploads.
     final url = Uri.parse('$_baseUrl/upload/schedule_file');
     final token = await getToken();
 
@@ -323,23 +309,18 @@ class ApiService {
       throw Exception('Authentication token is missing. Please log in again.');
     }
 
-    // Create a multipart request
     var request = http.MultipartRequest('POST', url);
-
-    // Add JWT Authorization Header
     request.headers.addAll({'Authorization': 'Bearer $token'});
 
-    // Add the PDF file
-    // 'schedule_file' must match the key expected by your backend server's file handler
     request.files.add(
       await http.MultipartFile.fromPath('schedule_file', pdfFile.path),
     );
 
-    // Add other form fields (like user ID)
-    request.fields['user_id'] = userId;
+    // 🗑️ IMPROVEMENT: Removed 'user_id' from request.fields
+    // (As decided previously, the server securely extracts it from the JWT token)
+    // request.fields['user_id'] = userId;
 
     try {
-      // Send the request
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
 
@@ -349,18 +330,14 @@ class ApiService {
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        // Success
         final data = _safeDecode(response.body, response.statusCode);
         return data;
       } else {
-        // Server returned an error status code
         String errorMessage = 'Failed to upload schedule file.';
         try {
           final errorBody = _safeDecode(response.body, response.statusCode);
           errorMessage = errorBody['message'] ?? errorMessage;
-        } catch (_) {
-          // Fallback if response body is not valid JSON
-        }
+        } catch (_) {}
         throw Exception(errorMessage);
       }
     } on http.ClientException {
@@ -373,20 +350,17 @@ class ApiService {
   }
 
   /// Saves a list of schedules that were extracted (e.g., from a PDF processing job).
-  /// This method is designed for batch insertion of standardized schedule data.
   Future<Map<String, dynamic>> saveExtractedSchedules(
     List<Map<String, dynamic>> extractedSchedules,
   ) async {
-    // 🟢 Refactored to use new helper
+    // NOTE: Assuming _sendAuthenticatedRequest is defined/available
     final response = await _sendAuthenticatedRequest(
-      'schedules/batch_save', // Endpoint for bulk schedule saving
+      'schedules/bulk_save',
       'POST',
-      // Send the list of schedules nested under the key 'schedules' in the request body
       body: {'schedules': extractedSchedules},
       failureMessage: 'Failed to save batch of extracted schedules.',
     );
 
-    // The server should ideally return a count of records saved or a success message
     return {
       'success': true,
       'message':
@@ -396,25 +370,67 @@ class ApiService {
     };
   }
 
-  /// Fetches all personal schedules/events for the authenticated user.
-  Future<List<PersonalEvent>> fetchUserSchedules() async {
-    // 🟢 Refactored to use new helper
+  // lib/services/api_service.dart (Inside ApiService class)
+
+  /// Updates a single schedule entry after manual correction.
+  Future<Map<String, dynamic>> updateScheduleEntry(ScheduleEntry entry) async {
+    // Use the entry's toJson() method for the body, as it contains all fields
+    final Map<String, dynamic> body = entry.toJson();
+
+    // Ensure the entry ID is available for the URL
+    if (entry.id == null) {
+      throw Exception('Cannot update schedule: Entry ID is missing.');
+    }
+
+    // This calls the Node.js PUT /api/schedules/update/:id route
+    final response = await _sendAuthenticatedRequest(
+      'schedules/update/${entry.id}', // Uses the permanent ID in the URL
+      'PUT', // Uses the PUT HTTP method
+      body: body,
+      failureMessage: 'Failed to update schedule entry.',
+    );
+
+    return response;
+  }
+
+  /// Fetches all general uploaded schedules (from add_pdf table).
+  Future<List<ScheduleEntry>> fetchUserSchedules() async {
     final data = await _sendAuthenticatedRequest(
-      'events/personal',
+      'schedules',
       'GET',
       failureMessage: 'Failed to load user schedules.',
     );
 
-    // The Node route returns a List of objects directly, which is mapped to 'list'
-    final List<dynamic> jsonList = data['list'] as List<dynamic>? ?? [];
+    // Node route returns a Map wrapped response: {success: true, schedules: [...]}
+    // We expect the server to return 'schedules' key containing the list.
+    final List<dynamic> jsonList = data['schedules'] as List<dynamic>? ?? [];
 
+    // FIX: Map to ScheduleEntry
     return jsonList
         .cast<Map<String, dynamic>>()
-        // Map the raw response JSON to the PersonalEvent model
-        .map((json) => PersonalEvent.fromJson(json))
+        .map((json) => ScheduleEntry.fromJson(json))
         .toList();
   }
 
+  // ------------------------------------------------------------------------
+  // --- AUTHENTICATION HELPER ---
+  // ------------------------------------------------------------------------
+
+  /// Retrieves the authenticated user's ID.
+  /// This method simulates fetching the user ID from stored authentication data.
+  Future<String?> getUserId() async {
+    // ------------------------------------------------------------------
+    // ⚠️ IMPORTANT: In a real app, replace '123' with logic that
+    // extracts the user ID from your stored JWT token or session manager.
+    // For now, this placeholder resolves the compilation error.
+    // ------------------------------------------------------------------
+
+    // Example placeholder:
+    await Future.delayed(
+      const Duration(milliseconds: 50),
+    ); // Simulate async delay
+    return '123';
+  }
   // -----------------------------------------------------------------------------
   // --- Personal Event Management (CRUD - Using New Helper) ---
   // -----------------------------------------------------------------------------
@@ -428,7 +444,6 @@ class ApiService {
     String? location,
     String? eventType,
   }) async {
-    // 🟢 Refactored to use new helper
     final responseBody = await _sendAuthenticatedRequest(
       'events/personal',
       'POST',
@@ -439,13 +454,11 @@ class ApiService {
         'end_date': endDate,
         'location': location,
         'event_type': eventType,
-        'is_personal': true, // Always true for this endpoint
+        'is_personal': true,
       },
       failureMessage: 'Failed to create personal event.',
     );
 
-    // Assuming the server returns the created event wrapped under an 'event' key,
-    // or returns the object directly.
     final eventJson =
         (responseBody['event'] ?? responseBody) as Map<String, dynamic>;
     return PersonalEvent.fromJson(eventJson);
@@ -453,23 +466,20 @@ class ApiService {
 
   /// Updates an existing personal event.
   Future<void> updatePersonalEvent(PersonalEvent event) async {
-    // Ensure the ID is present before attempting to update
     if (event.id == null) {
       throw Exception('Cannot update event: ID is missing.');
     }
 
-    // 🟢 Refactored to use new helper
     await _sendAuthenticatedRequest(
       'events/personal/${event.id}',
       'PUT',
-      body: event.toJson(), // The helper encodes the body
+      body: event.toJson(),
       failureMessage: 'Failed to update event.',
     );
   }
 
   /// Deletes a personal event by ID.
   Future<void> deletePersonalEvent(String eventId) async {
-    // 🟢 Refactored to use new helper
     await _sendAuthenticatedRequest(
       'events/personal/$eventId',
       'DELETE',
@@ -477,22 +487,37 @@ class ApiService {
     );
   }
 
-  //--------------------------------------------------------------------------
+  // lib/services/api_service.dart (Check this method)
+
+  /// Fetches all personal events for the currently authenticated user.
+  Future<List<PersonalEvent>> fetchPersonalEvents() async {
+    final responseBody = await _sendAuthenticatedRequest(
+      'events/personal',
+      'GET',
+      failureMessage: 'Failed to fetch personal events. Check token status.',
+    );
+
+    // 1. SUCCESS CASE: Check if the response is a List. (Expected behavior)
+    // The server (Node.js) directly returns a List/Array of events for this endpoint: res.json(formattedEvents);
+
+    // Check if the response body contains the 'list' key (from _safeDecode wrapper)
+    final List<dynamic> eventList =
+        responseBody['list'] as List<dynamic>? ?? [];
+
+    return eventList.map((json) => PersonalEvent.fromJson(json)).toList();
+  }
+
   // --- Profile Management ---
-  //--------------------------------------------------------------------------
   /// Fetches the user's profile data (requires token).
   Future<Map<String, dynamic>> fetchProfile() async {
-    // 🟢 Refactored to use new helper
     final data = await _sendAuthenticatedRequest(
       'profile',
       'GET',
       failureMessage: 'Failed to fetch profile.',
     );
 
-    // Ensure client-side path construction and host replacement is handled, using the new resolver logic
     final photoPath = data['photo_url'] ?? data['profile_img'];
     if (photoPath is String && photoPath.isNotEmpty) {
-      // Use the internal resolution helper
       data['photo_url'] = _resolveUrl(photoPath);
     }
     data.remove('profile_img');
@@ -515,23 +540,18 @@ class ApiService {
     final url = Uri.parse('$_baseUrl/profile');
     var request = http.MultipartRequest('POST', url);
 
-    // Add JWT Authorization Header (no Content-Type needed for Multipart)
     request.headers.addAll({'Authorization': 'Bearer $token'});
 
-    // Add text fields
     request.fields['name'] = name;
     request.fields['course'] = course;
     request.fields['department'] = department;
 
-    // Add file if present
     if (profilePhoto != null) {
-      // 'profilePhoto' must match the key used in server.js: upload.single('profilePhoto')
       request.files.add(
         await http.MultipartFile.fromPath('profilePhoto', profilePhoto.path),
       );
     }
 
-    // Send the request
     final streamResponse = await request.send();
     final response = await http.Response.fromStream(streamResponse);
 
@@ -539,10 +559,8 @@ class ApiService {
       final data = _safeDecode(response.body, response.statusCode);
       Map<String, dynamic> user = data['user'] as Map<String, dynamic>;
 
-      // Ensure photo_url is processed if present in the response, using the new resolver logic
       final photoPath = user['photo_url'] ?? user['profile_img'];
       if (photoPath is String && photoPath.isNotEmpty) {
-        // Use the internal resolution helper
         user['photo_url'] = _resolveUrl(photoPath);
       }
       user.remove('profile_img');
@@ -556,7 +574,6 @@ class ApiService {
               'Profile update failed with status: ${response.statusCode}',
         );
       } catch (e) {
-        // Handle cases where body is not JSON or decoding failed
         throw Exception(
           'Profile update failed with status: ${response.statusCode}. Error: $e',
         );
@@ -571,7 +588,6 @@ class ApiService {
     required String currentPassword,
     required String newPassword,
   }) async {
-    // 🟢 Refactored to use new helper
     await _sendAuthenticatedRequest(
       'user/change-password',
       'POST',
@@ -582,7 +598,6 @@ class ApiService {
 
   /// Handles the token-authenticated request to logically deactivate the user's account.
   Future<void> deactivateAccount({required String currentPassword}) async {
-    // 🟢 Refactored to use new helper
     await _sendAuthenticatedRequest(
       'user/deactivate',
       'POST',
@@ -590,7 +605,6 @@ class ApiService {
       failureMessage: 'Account deactivation failed.',
     );
 
-    // Success: Delete the local JWT token immediately
     await deleteToken();
   }
 
@@ -604,7 +618,6 @@ class ApiService {
     required String feedbackType,
     required int rating,
   }) async {
-    // 🟢 Refactored to use new helper
     await _sendAuthenticatedRequest(
       'feedback',
       'POST',
@@ -616,7 +629,6 @@ class ApiService {
       },
       failureMessage: 'Failed to submit feedback.',
     );
-    // Return success message on successful 200/201/204 response
     return {'success': true, 'message': 'Feedback submitted successfully!'};
   }
 
@@ -626,7 +638,6 @@ class ApiService {
 
   /// Submits a new support ticket to the server.
   Future<Ticket> submitNewTicket(String subject, String message) async {
-    // 🟢 Refactored to use new helper
     final responseBody = await _sendAuthenticatedRequest(
       'tickets',
       'POST',
@@ -634,13 +645,11 @@ class ApiService {
       failureMessage: 'Failed to submit ticket.',
     );
 
-    // FIX: Ensure 'ticket' key exists and cast value to Map<String, dynamic>
     return Ticket.fromJson(responseBody['ticket'] as Map<String, dynamic>);
   }
 
   /// Fetches all support tickets for the authenticated user.
   Future<List<Ticket>> fetchUserTickets() async {
-    // 🟢 Refactored to use new helper
     final data = await _sendAuthenticatedRequest(
       'tickets',
       'GET',
@@ -662,7 +671,6 @@ class ApiService {
   /// Fetches a list of announcements (requires token).
   Future<List<Announcement>> fetchAnnouncements() async {
     try {
-      // 🟢 Refactored to use new helper
       final data = await _sendAuthenticatedRequest(
         'announcements',
         'GET',
@@ -681,7 +689,6 @@ class ApiService {
         return Announcement.fromJson(json);
       }).toList();
     } on Exception catch (e) {
-      // Explicitly check for 404/No Content errors in the exception message from the helper
       if (e.toString().contains('404')) {
         log(
           'Announcements endpoint returned 404/Not Found, returning empty list.',

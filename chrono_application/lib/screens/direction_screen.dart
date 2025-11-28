@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import '../models/schedule_entry.dart'; // REQUIRED IMPORT
 
 // -----------------------------------------------------------------
 // 1. Custom QuickNavItem Widget (Stateful for Tap Animation)
-// (Kept unchanged from the previous version for visual feedback)
+// (Kept unchanged for visual feedback)
 // -----------------------------------------------------------------
 
 class QuickNavItem extends StatefulWidget {
@@ -30,14 +31,12 @@ class _QuickNavItemState extends State<QuickNavItem> {
     });
   }
 
-  // We only call onTap after the press animation is complete
   void _onTapUp(TapUpDetails details) {
     setState(() {
       _isPressed = false;
     });
-    // Use a small delay to ensure the visual effect registers
     Future.delayed(const Duration(milliseconds: 100), () {
-      widget.onTap?.call(); // Execute the tap function
+      widget.onTap?.call();
     });
   }
 
@@ -100,13 +99,79 @@ class _QuickNavItemState extends State<QuickNavItem> {
 }
 
 // -----------------------------------------------------------------
-// 2. DirectionScreen (Updated to include Dialog functionality)
+// 2. DirectionScreen (Stateful for Search Functionality)
 // -----------------------------------------------------------------
 
-class DirectionScreen extends StatelessWidget {
-  const DirectionScreen({super.key});
+class DirectionScreen extends StatefulWidget {
+  final List<ScheduleEntry> scheduleEntries;
 
-  // New method to show the confirmation dialog
+  const DirectionScreen({super.key, this.scheduleEntries = const []});
+
+  @override
+  State<DirectionScreen> createState() => _DirectionScreenState();
+}
+
+class _DirectionScreenState extends State<DirectionScreen> {
+  // State for search functionality
+  late TextEditingController _searchController;
+  List<String> _filteredRooms = [];
+
+  // 🎯 Helper to extract UNIQUE rooms from the schedule list
+  List<String> get _uniqueRooms {
+    return widget.scheduleEntries
+        .where((entry) => entry.room?.isNotEmpty == true)
+        .map((entry) => entry.room!)
+        .toSet() // Gets only unique rooms
+        .toList();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController();
+    // Initialize filtered list with all unique rooms on startup
+    _filteredRooms = _uniqueRooms;
+
+    // Start listening to text changes for dynamic filtering
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // --- Search Logic ---
+  void _onSearchChanged() {
+    final query = _searchController.text.toLowerCase().trim();
+
+    if (query.isEmpty) {
+      setState(() {
+        _filteredRooms = _uniqueRooms;
+      });
+      return;
+    }
+
+    // 🎯 Filter the unique room list based on the search query
+    final filtered = _uniqueRooms.where((room) {
+      // Check if the query matches the room number OR any relevant course code/title
+      return room.toLowerCase().contains(query) ||
+          widget.scheduleEntries.any((entry) {
+            return (entry.scheduleCode.toLowerCase().contains(query) ||
+                entry.title.toLowerCase().contains(query));
+          });
+    }).toList();
+
+    // Since the rooms are unique, we just update the list
+    setState(() {
+      _filteredRooms = filtered;
+    });
+  }
+
+  // --- Helper Methods (Dialog, UI Builders) ---
+
   void _showStartDirectionDialog(BuildContext context, String destination) {
     showDialog(
       context: context,
@@ -120,21 +185,78 @@ class DirectionScreen extends StatelessWidget {
             TextButton(
               child: const Text('Cancel'),
               onPressed: () {
-                Navigator.of(dialogContext).pop(); // Close the dialog
+                Navigator.of(dialogContext).pop();
               },
             ),
             FilledButton(
               onPressed: () {
-                Navigator.of(dialogContext).pop(); // Close the dialog
-                // IMPORTANT: Replace this with your actual navigation logic
+                Navigator.of(dialogContext).pop();
                 debugPrint('Navigating to $destination...');
-                // Example: Navigator.of(context).push(MaterialPageRoute(builder: (c) => DirectionMapScreen(destination: destination)));
               },
               child: const Text('Start'),
             ),
           ],
         );
       },
+    );
+  }
+
+  // 🎯 WIDGET: Builds the list of rooms from the schedule
+  Widget _buildScheduleRoomsList(BuildContext context) {
+    final rooms = _filteredRooms; // Use the filtered list
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    final hintColor = Theme.of(context).hintColor;
+
+    if (rooms.isEmpty && _searchController.text.isNotEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Text(
+          'No schedule rooms match your search query.',
+          style: TextStyle(color: hintColor, fontStyle: FontStyle.italic),
+        ),
+      );
+    }
+
+    if (rooms.isEmpty && _searchController.text.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Text(
+          'No assigned rooms found in your current schedule. Upload a PDF.',
+          style: TextStyle(color: hintColor, fontStyle: FontStyle.italic),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 30),
+        Text(
+          'My Schedule Rooms (${rooms.length} found)',
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 10),
+
+        // List of unique rooms as tappable tiles
+        ...rooms
+            .map(
+              (room) => ListTile(
+                leading: Icon(Icons.meeting_room, color: primaryColor),
+                title: Text(
+                  'Room $room',
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+                trailing: const Icon(Icons.directions_run, size: 20),
+                onTap: () {
+                  // Initiate navigation to the specific room
+                  _showStartDirectionDialog(context, 'Room $room');
+                },
+              ),
+            )
+            // ignore: unnecessary_to_list_in_spreads
+            .toList(),
+        const SizedBox(height: 30),
+      ],
     );
   }
 
@@ -183,8 +305,7 @@ class DirectionScreen extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      Icons
-                          .map_outlined, // Changed to a more map-appropriate icon
+                      Icons.map_outlined,
                       size: 48,
                       color: Theme.of(context).hintColor,
                     ),
@@ -206,7 +327,10 @@ class DirectionScreen extends StatelessWidget {
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
+            // 🎯 FIX: Added TextEditingController and onChanged listener
             TextField(
+              controller: _searchController,
+              onChanged: (_) => _onSearchChanged(),
               decoration: InputDecoration(
                 hintText: 'Search course name, room, or subject...',
                 prefixIcon: const Icon(Icons.search),
@@ -230,7 +354,10 @@ class DirectionScreen extends StatelessWidget {
               ),
             ),
 
-            const SizedBox(height: 30),
+            // -----------------------------------------------------------------
+            // 🎯 REARRANGEMENT FIX: Display My Schedule Rooms List
+            // -----------------------------------------------------------------
+            _buildScheduleRoomsList(context),
 
             // --- Quick Navigation Section ---
             const Text(
@@ -266,7 +393,7 @@ class DirectionScreen extends StatelessWidget {
                 ),
                 QuickNavItem(
                   icon: Icons.wc,
-                  label: 'Restroom', // Changed label for clarity
+                  label: 'Restroom',
                   onTap: () =>
                       _showStartDirectionDialog(context, 'Nearest Restroom'),
                 ),
@@ -284,7 +411,8 @@ class DirectionScreen extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+
+            const SizedBox(height: 50),
           ],
         ),
       ),

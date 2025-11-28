@@ -4,9 +4,12 @@ import 'schedule_screen.dart';
 import 'direction_screen.dart';
 import 'notification_screen.dart';
 import 'announcement_screen.dart';
+import '../screens/edit_schedule_entry_screen.dart';
+import '../models/schedule_entry.dart'; // Import the specific model
+import '../services/api_service.dart'; // REQUIRED IMPORT for fetching data
 import 'add_pdf_screen.dart';
 
-// --- Placeholder Screens (Must be defined/imported) ---
+// --- Placeholder Screens (Unchanged) ---
 class ProfilePlaceholderScreen extends StatelessWidget {
   final VoidCallback onBackToSettings;
   final VoidCallback onClearCachedDataTap;
@@ -43,7 +46,7 @@ class ProfilePlaceholderScreen extends StatelessWidget {
   );
 }
 
-// --- NEW WIDGET: ModernActionButton for Reusable Modern Styling ---
+// --- NEW WIDGET: ModernActionButton for Reusable Modern Styling (Unchanged) ---
 class ModernActionButton extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -133,51 +136,187 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
 
-  // 1. STATE VARIABLE: Holds all extracted data from the PDF upload.
-  // The 'courses' key holds the List of classes for display.
-  Map<String, dynamic> _extractedScheduleData = const {
+  // 🎯 REQUIRED: Initialize ApiService for fetching data
+  final ApiService _apiService = ApiService();
+
+  // --- Search State ---
+  late TextEditingController _searchController;
+  String _searchQuery = ''; // State to hold the current search text
+
+  // 1. 🚀 STATE: This structure holds the processed schedule data.
+  Map<String, dynamic> _scheduleData = const {
     'semester': 'No Schedule Uploaded',
     'total_units': '0',
-    'courses': <Map<String, String>>[],
+    'courses': <ScheduleEntry>[], // Store actual ScheduleEntry objects
   };
 
-  // 2. STATE UPDATE LOGIC: Updates the state when new data is received.
-  void _updateScheduleData(Map<String, dynamic> newScheduleData) {
+  bool _isLoading = true; // State to track data loading
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize search controller
+    _searchController = TextEditingController();
+    // 🎯 CRITICAL FIX: Load user schedules from the database when the dashboard initializes.
+    _loadUserSchedules();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // --- Core Data Loading Function (Fetches schedules from DB on login) ---
+  Future<void> _loadUserSchedules() async {
+    try {
+      final List<ScheduleEntry> fetchedEntries = await _apiService
+          .fetchUserSchedules()
+          .then((list) => list.whereType<ScheduleEntry>().toList());
+
+      // Determine semester/units from fetched data
+      if (fetchedEntries.isNotEmpty) {
+        final firstEntry = fetchedEntries.first;
+        final String startDate = firstEntry.startDate;
+        final String semesterName = startDate.isNotEmpty
+            ? 'Sem. ${startDate.substring(0, 4)}'
+            : 'Unknown Semester';
+        final String totalUnits = fetchedEntries.length.toString(); // MOCK
+
+        _scheduleData = {
+          'semester': semesterName,
+          'total_units': totalUnits,
+          'courses': fetchedEntries,
+        };
+      } else {
+        // Explicitly set to empty state if no schedules are found (Fixes Jamil's 148 units issue)
+        _scheduleData = const {
+          'semester': 'No Schedule Uploaded',
+          'total_units': '0',
+          'courses': <ScheduleEntry>[],
+        };
+      }
+    } catch (e) {
+      debugPrint('Error fetching schedules on startup: $e');
+      // Ensure state is reset even on error
+      _scheduleData = const {
+        'semester': 'No Schedule Uploaded',
+        'total_units': '0',
+        'courses': <ScheduleEntry>[],
+      };
+    } finally {
+      // Must call setState to stop the loading indicator even if no data was found
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  // 2. 🚀 UPDATER: Accepts the List<ScheduleEntry> returned from AddPdfScreen/Edit Screen
+  void _updateScheduleData(List<ScheduleEntry> entries) {
+    String semesterName = 'No Schedule Uploaded';
+    String totalUnits = '0';
+    List<ScheduleEntry> courses = [];
+
+    if (entries.isNotEmpty) {
+      final firstEntry = entries.first;
+      final String startDate = firstEntry.startDate;
+      semesterName = startDate.isNotEmpty
+          ? 'Sem. ${startDate.substring(0, 4)}'
+          : 'Unknown Semester';
+      totalUnits = entries.length.toString();
+      courses = entries;
+    }
+
     setState(() {
-      _extractedScheduleData = newScheduleData;
-      debugPrint('Schedule Data Updated: $_extractedScheduleData');
+      _scheduleData = {
+        'semester': semesterName,
+        'total_units': totalUnits,
+        'courses': courses,
+      };
+      // Reset search filter after data update
+      _searchQuery = '';
+      _searchController.clear();
+      debugPrint('Schedule Data Updated: $_scheduleData');
     });
   }
 
+  // --- Filtering Logic ---
+  List<ScheduleEntry> _getFilteredClasses() {
+    final allClasses = _getUpcomingClasses();
+    final query = _searchQuery.toLowerCase().trim();
+
+    if (query.isEmpty) {
+      return allClasses;
+    }
+
+    // Filter classes based on code, title, room, or day
+    return allClasses.where((entry) {
+      final details =
+          '${entry.scheduleCode} ${entry.title} ${entry.room} ${entry.dayOfWeek} ${entry.startDate}';
+
+      return details.toLowerCase().contains(query);
+    }).toList();
+  }
+
+  // 🚀 HANDLER for when a single entry is edited and saved (from EditScreen)
+  void _handleEntryUpdate(ScheduleEntry updatedEntry) {
+    final currentCourses = _getUpcomingClasses();
+
+    final index = currentCourses.indexWhere(
+      (entry) => entry.scheduleCode == updatedEntry.scheduleCode,
+    );
+
+    if (index != -1) {
+      final List<ScheduleEntry> newCourses = List.from(currentCourses);
+      newCourses[index] = updatedEntry;
+
+      // Update the local state with the list containing the fixed entry
+      _updateScheduleData(newCourses);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Schedule updated locally! (API sync pending)'),
+        ),
+      );
+    }
+  }
+
   void _onItemTapped(int index) {
-    // Check if the tapped index is the "Profile" tab (Index 4)
     if (index == 4) {
       widget.onProfileTap();
     } else {
-      // For all other tabs, just switch the screen locally
       setState(() {
         _selectedIndex = index;
       });
     }
   }
 
-  // Helper Widget for Upcoming Class Tiles
+  List<ScheduleEntry> _getUpcomingClasses() {
+    return (_scheduleData['courses'] as List?)?.cast<ScheduleEntry>() ?? [];
+  }
+
+  // Helper Widget for Upcoming Class Tiles (Modified to accept ScheduleEntry)
   Widget _buildClassTile({
     required BuildContext context,
-    required String title,
-    required String details,
-    required String imageAsset,
+    required ScheduleEntry data,
   }) {
     final Color primaryColor = Theme.of(context).colorScheme.primary;
     final Color textColor = Theme.of(context).textTheme.bodyMedium!.color!;
     final Color cardColor = Theme.of(context).cardColor;
+
+    final String title = '${data.scheduleCode}: ${data.title}';
+
+    final String details =
+        '${data.dayOfWeek ?? 'N/A'} | Time: ${data.startTime} | Room: ${data.room ?? 'N/A'} | Starts: ${data.startDate}';
+
+    const String imageAsset = 'assets/images/default_class.png';
 
     return Column(
       children: [
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Text content
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -199,9 +338,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   SizedBox(
                     height: 35,
                     child: OutlinedButton(
-                      onPressed: () {
-                        // TODOImplement navigation to view class details
-                        debugPrint('View details for $title clicked');
+                      onPressed: () async {
+                        final updatedEntry = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                EditScheduleEntryScreen(entry: data),
+                          ),
+                        );
+
+                        if (updatedEntry is ScheduleEntry) {
+                          _handleEntryUpdate(updatedEntry);
+                        }
                       },
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -211,7 +359,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       ),
                       child: Text(
-                        'View',
+                        'View / Edit',
                         style: TextStyle(color: primaryColor),
                       ),
                     ),
@@ -220,7 +368,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
 
-            // Image Placeholder for Class Tile
             Container(
               width: 80,
               height: 80,
@@ -254,13 +401,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // NEW WIDGET: Card to display summary data (Semester, Units)
   Widget _buildSummaryCard(BuildContext context) {
     final Color primaryColor = Theme.of(context).colorScheme.primary;
-    // Safely access data, defaulting to placeholder values
-    final String semester =
-        _extractedScheduleData['semester'] ?? 'No Schedule Uploaded';
-    final String units = _extractedScheduleData['total_units'] ?? '0';
+
+    final String semester = _scheduleData['semester'] ?? 'No Schedule Uploaded';
+    final String units = _scheduleData['total_units'] ?? '0';
     final bool hasSchedule = semester != 'No Schedule Uploaded';
 
     return Card(
@@ -323,26 +468,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // Helper method to build the content for the Home screen (Index 0).
   Widget _buildHomeContent(BuildContext context) {
     final String userName = widget.userData['fullname'] ?? 'User';
-    final Color primaryColor = Theme.of(context).colorScheme.primary;
 
-    // Derived list of courses from the extracted schedule data
-    // Safely cast the list, defaulting to an empty list if missing or wrong type
-    final List<Map<String, String>> upcomingClasses =
-        (_extractedScheduleData['courses'] as List?)
-            ?.cast<Map<String, String>>() ??
-        [];
+    // 3. 🔄 FETCH DATA: Get the filtered list based on search query.
+    final List<ScheduleEntry> upcomingClasses = _getFilteredClasses();
 
-    // Calculate alpha for 10% opacity (255 * 0.1 = 25.5 -> 26)
     const int alphaFor10Percent = 26;
+
+    // 🎯 FIX: Display CircularProgressIndicator while loading
+    if (_isLoading) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.only(top: 100.0),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
 
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          // --- Welcome Header ---
+          // --- Welcome Header (Unchanged) ---
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 50, 20, 20),
             child: Row(
@@ -367,15 +515,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
 
-          // --- Search Bar ---
+          // --- Search Bar (Functional Input) ---
           Padding(
             padding: const EdgeInsets.symmetric(
               horizontal: 20.0,
               vertical: 8.0,
             ),
             child: TextField(
+              controller: _searchController,
+              onChanged: (value) {
+                // Update the state with the new query to trigger filtering and rebuild
+                setState(() {
+                  _searchQuery = value;
+                });
+              },
               decoration: InputDecoration(
-                hintText: 'Search',
+                hintText: 'Search course name, room, or subject...',
                 prefixIcon: Icon(
                   Icons.search,
                   color: Theme.of(context).iconTheme.color,
@@ -396,7 +551,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           const SizedBox(height: 20),
 
-          // --- Schedule Summary Card ---
+          // --- Schedule Summary Card (Updated to use new state) ---
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20.0),
             child: _buildSummaryCard(context),
@@ -404,7 +559,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           const SizedBox(height: 30),
 
-          // --- Campus Bulletin Board Section (IMPROVED BUTTON/CARD) ---
+          // --- Campus Bulletin Board Section (Unchanged) ---
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20.0),
             child: Column(
@@ -441,7 +596,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           const SizedBox(height: 30),
 
-          // --- Add Study Load Section (Image Integrated) ---
+          // --- Add Study Load Section ---
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20.0),
             child: Column(
@@ -498,13 +653,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         style: TextStyle(color: Theme.of(context).hintColor),
                       ),
                     ),
-                    // MODIFIED BUTTON: Navigate and AWAIT result
+                    // 4. 🚀 ACTION: Await the result and check for Map<String, dynamic>
                     SizedBox(
                       height: 40, // Slightly taller for better touch target
                       child: FilledButton(
                         onPressed: () async {
                           debugPrint('Add Study Load clicked - Navigating');
-                          // 3. Await the result from AddPdfScreen
+
+                          // Await the result from AddPdfScreen (Expects List<ScheduleEntry>)
                           final result = await Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -512,19 +668,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                           );
 
-                          // 4. Check if the result is valid and update the state
-                          // NOTE: AddPdfScreen's confirm button must use
-                          // Navigator.pop(context, scheduleData) to send data back.
-                          if (result is Map<String, dynamic>) {
+                          // 🚀 CRITICAL FIX: Check if the result is the expected List<ScheduleEntry>
+                          if (result is List<ScheduleEntry>) {
+                            // Update the state with the newly extracted list
                             _updateScheduleData(result);
                           } else {
                             debugPrint(
-                              'Navigation result was null or wrong type: $result',
+                              'Navigation result was null or wrong type (expected List<ScheduleEntry>): $result',
                             );
                           }
                         },
                         style: FilledButton.styleFrom(
-                          backgroundColor: primaryColor,
+                          backgroundColor: Theme.of(
+                            context,
+                          ).colorScheme.primary,
                           foregroundColor: Theme.of(
                             context,
                           ).colorScheme.onPrimary,
@@ -552,7 +709,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           const SizedBox(height: 30),
 
-          // --- Upcoming Classes Header ---
+          // --- Upcoming Classes Header (Unchanged) ---
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20.0),
             child: Text(
@@ -567,12 +724,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           const SizedBox(height: 10),
 
-          // Upcoming Classes List
+          // 5. 🔄 DISPLAY: Upcoming Classes List (Uses _getUpcomingClasses)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20.0),
             child: Column(
               children: [
-                if (upcomingClasses.isEmpty)
+                if (upcomingClasses.isEmpty && _searchQuery.isEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 20.0),
                     child: Text(
@@ -584,19 +741,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                   )
+                else if (upcomingClasses.isEmpty && _searchQuery.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 20.0),
+                    child: Text(
+                      // ignore: unnecessary_brace_in_string_interps
+                      'No classes match your search term: "${_searchQuery}"',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontStyle: FontStyle.italic,
+                        color: Theme.of(context).hintColor,
+                      ),
+                    ),
+                  )
                 else
                   // Dynamically displays the live schedule items.
                   ...upcomingClasses.map(
-                    (cls) => _buildClassTile(
-                      context: context,
-                      // IMPROVEMENT: Added null-aware access for robustness
-                      title: cls['title'] ?? 'Unknown Course',
-                      details: cls['details'] ?? 'No details available',
-                      // Use a default asset if 'image_asset' is missing
-                      imageAsset:
-                          cls['image_asset'] ??
-                          'assets/images/default_class.png',
-                    ),
+                    // Map ScheduleEntry objects to UI Tiles
+                    (entry) => _buildClassTile(context: context, data: entry),
                   ),
                 const SizedBox(height: 50),
               ],
@@ -611,12 +773,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final Color primaryColor = Theme.of(context).colorScheme.primary;
 
+    // 🎯 Get the schedules list for passing to other screens
+    final List<ScheduleEntry> currentSchedules = _getUpcomingClasses();
+
     // Define and initialize screens here, where context is valid
     final List<Widget> screens = [
       _buildHomeContent(context),
       const ScheduleScreen(),
-      const DirectionScreen(),
-      const NotificationScreen(),
+      // 🎯 FIX: Pass the current list of schedules to the DirectionScreen
+      DirectionScreen(scheduleEntries: currentSchedules),
+      // 🎯 FIX: Pass the current list of schedules to the NotificationScreen
+      NotificationScreen(scheduleEntries: currentSchedules),
 
       // Index 4: Profile placeholder - Passes all required parameters
       ProfilePlaceholderScreen(
