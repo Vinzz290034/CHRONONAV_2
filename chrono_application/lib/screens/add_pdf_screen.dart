@@ -1,3 +1,5 @@
+// lib/screens/add_pdf_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
@@ -52,7 +54,10 @@ class _AddPdfScreenState extends State<AddPdfScreen> {
     // Format for display
     final String daysAndTimes =
         (data.dayOfWeek?.isNotEmpty == true ? '${data.dayOfWeek} | ' : '') +
-        (data.startTime.isNotEmpty ? 'Time: ${data.startTime}' : 'Time: N/A');
+        (data.startTime.isNotEmpty ? 'Time: ${data.startTime}' : 'Time: N/A') +
+        (data.endTime?.isNotEmpty == true
+            ? ' - ${data.endTime}'
+            : ''); // Include End Time
 
     // 🎯 UI FIX: Use data.room (the new field) and update the label
     final String typeAndRoom =
@@ -185,7 +190,7 @@ class _AddPdfScreenState extends State<AddPdfScreen> {
   }
 
   // --------------------------------------------------------------------------------
-  // 🧠 OCR & DATA PROCESSING LOGIC (Uses ScheduleEntry)
+  // 🧠 OCR & DATA PROCESSING LOGIC (Uses ScheduleEntry) - **FINAL FIXED LOGIC**
   // --------------------------------------------------------------------------------
 
   // 🎯 NEW HELPER: Simple Date Formatting (e.g., "01/06/25" -> "2025-01-06")
@@ -217,166 +222,228 @@ class _AddPdfScreenState extends State<AddPdfScreen> {
   Future<List<ScheduleEntry>> _processImageForOcr(String imagePath) async {
     final inputImage = InputImage.fromFilePath(imagePath);
     final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
-    final RecognizedText recognizedText = await textRecognizer.processImage(
-      inputImage,
-    );
-    textRecognizer.close();
-    final rawText = recognizedText.text;
 
-    debugPrint('--- FULL OCR OUTPUT ---');
-    debugPrint(rawText);
-    debugPrint('-----------------------');
-
-    final lines = rawText
-        .split('\n')
-        .map((l) => l.trim())
-        .where((l) => l.isNotEmpty)
-        .toList();
-
-    // --- Global Date Variables ---
-    // FIX: Default to empty string. If not found, the final assignment uses DateTime.now()
-    String extractedStartDate = '';
-    String? extractedEndDate; // Default to NULL
-
-    // Define the expected columns and their corresponding regex
-    final Map<String, RegExp> columnHeaders = {
-      'COURSE NO.': RegExp(
-        r'IT-|CC-|CS-|EE-|MATH|ENGL',
-        caseSensitive: false,
-      ), // Look for common course prefixes
-      'TIME': RegExp(r'\d{1,2}:\d{2}', caseSensitive: false),
-      'DAYS': RegExp(r'[MTWHFS]+', caseSensitive: false),
-      'ROOM': RegExp(r'\d{3,}[A-Z]?', caseSensitive: false),
-    };
-
-    final RegExp dateRegex = RegExp(r'\d{1,2}/\s?\d{1,2}/\s?\d{2,4}');
-
-    final List<String> detectedHeaders = [];
-    final Map<String, List<String>> columnData = {};
-
-    // --- Phase 1: Global Data & Header Grouping ---
-    for (var line in lines) {
-      final upperLine = line.toUpperCase().replaceAll(RegExp(r'\s+'), ' ');
-
-      // 1. Extract Global Dates (Semester Start/End)
-      if (extractedStartDate.isEmpty &&
-          (upperLine.contains('DATE ENROLLED') ||
-              upperLine.contains('SEMESTER'))) {
-        final dateMatch = dateRegex.firstMatch(line);
-        if (dateMatch != null) {
-          extractedStartDate = _formatOcrDate(dateMatch.group(0)!);
-        }
-      }
-
-      // 2. Identify Column Headers
-      bool isHeader = false;
-      String? currentHeader;
-
-      for (var headerKey in columnHeaders.keys) {
-        if (upperLine.contains(headerKey)) {
-          currentHeader = headerKey;
-          isHeader = true;
-          if (!detectedHeaders.contains(currentHeader)) {
-            detectedHeaders.add(currentHeader);
-            columnData[currentHeader] = [];
-          }
-          break;
-        }
-      }
-
-      // 3. Group data under the last detected header
-      if (!isHeader && detectedHeaders.isNotEmpty) {
-        final lastHeader = detectedHeaders.last;
-
-        // Only append data if it matches the expected pattern for that column
-        if (columnHeaders[lastHeader]!.hasMatch(line)) {
-          columnData[lastHeader]!.add(line);
-        }
-      }
-    }
-
-    // --- Phase 2: Create Schedule Entries ---
-
+    RecognizedText?
+    recognizedText; // Make this nullable and initialize outside try
     final List<ScheduleEntry> extractedList = [];
-    final int entryCount = columnData['COURSE NO.']?.length ?? 0;
 
-    // Determine fallback date for required fields
-    final String fallbackDate = DateTime.now().toString().split(' ')[0];
+    try {
+      // 1. Process the image within the try block
+      recognizedText = await textRecognizer.processImage(inputImage);
 
-    if (entryCount == 0) {
-      return [
-        ScheduleEntry(
-          scheduleCode: 'ERROR-000',
-          title: 'Extraction failed: No course codes found.',
-          scheduleType: 'meeting',
-          startDate: extractedStartDate.isEmpty
-              ? fallbackDate
-              : extractedStartDate,
-          startTime: '08:00',
-          repeatFrequency: 'none',
-          // Mock metadata remains the same
-          id: 0,
-          userId: 0,
-          uploaderName: 'Error',
-          isActive: true,
-          createdAt: DateTime.now().toIso8601String(),
-        ),
-      ];
-    }
+      // Safety check: if processing somehow returned null or failed silently
+      // ignore: unnecessary_null_comparison
+      if (recognizedText == null) {
+        debugPrint('OCR processing returned no text data.');
+        return [];
+      }
 
-    // Extract data sequentially based on the Course Count
-    for (int i = 0; i < entryCount; i++) {
-      final String code =
-          columnData['COURSE NO.']?[i].trim().toUpperCase() ?? 'UNK-CODE';
+      final rawText = recognizedText.text;
 
-      // Use the code as the title if a title extraction logic isn't available
-      final String titleGuess = code
-          .replaceAll(RegExp(r'([A-Z]{3,})'), r'$1 ')
-          .replaceAll(RegExp(r'\d+$'), '');
+      debugPrint('--- FULL OCR OUTPUT (for Debugging) ---');
+      debugPrint(rawText);
+      debugPrint('---------------------------------------');
 
-      // --- Retrieve the necessary data values ---
-      final String startTime = columnData['TIME']?.length == entryCount
-          ? columnData['TIME']![i].trim()
-          : '08:00';
-      final String? dayOfWeek = columnData['DAYS']?.length == entryCount
-          ? columnData['DAYS']![i].trim().toUpperCase()
-          : null;
-
-      // 🎯 Data Retrieval Fix: Use the index only if the count matches.
-      final String? roomNumber = columnData['ROOM']?.length == entryCount
-          ? columnData['ROOM']![i].trim()
-          : null;
-      // -----------------------------------------
-
-      extractedList.add(
-        ScheduleEntry(
-          scheduleCode: code,
-          title: 'Class: ${titleGuess.trim()}',
-          scheduleType: 'class',
-          // FIX: Use fallback date if extractedStartDate is empty
-          startDate: extractedStartDate.isEmpty
-              ? fallbackDate
-              : extractedStartDate,
-          endDate: extractedEndDate,
-
-          startTime: startTime,
-          repeatFrequency: 'weekly',
-          dayOfWeek: dayOfWeek,
-          room: roomNumber, // Assigned the extracted room data
-          // Mock metadata
-          id: i + 1,
-          userId: 0,
-          uploaderName: 'Self-Upload',
-          isActive: true,
-          createdAt: DateTime.now().toIso8601String(),
-        ),
+      // CRITICAL FIX 1: Join fragmented time and separator lines.
+      String processedText = rawText.replaceAll(RegExp(r'\n\s*-\s*\n'), ' - ');
+      processedText = processedText.replaceAll(
+        RegExp(r'(\d{1,2}:\d{2})\s*-\s*\n\s*(\d{1,2}:\d{2})'),
+        r'$1 - $2',
       );
-    }
 
-    debugPrint(
-      'Extracted ${extractedList.length} schedules via header parsing.',
-    );
-    return extractedList;
+      // Re-split the processed text into lines
+      final lines = processedText
+          .split('\n')
+          .map((l) => l.trim())
+          .where((l) => l.isNotEmpty)
+          .toList();
+
+      // --- (The rest of your extraction logic starts here) ---
+
+      // --- Global Date Variables (for fallback) ---
+      String extractedStartDate = '';
+      final String fallbackDate = DateTime.now().toString().split(' ')[0];
+
+      // Storage for collected column data
+      List<String> courseCodes = [];
+      List<String> times = [];
+      List<String> days = [];
+      List<String> rooms = [];
+
+      // State machine to track which column list we are currently filling
+      String currentState = 'NONE';
+
+      // Define RegEx patterns for identification within the vertical lists
+      final RegExp courseCodePattern = RegExp(
+        r'[A-Z]{2,}-[A-Z0-9]{2,}',
+        caseSensitive: false,
+      );
+      final RegExp timePattern = RegExp(
+        r'\d{1,2}:\d{2}\s*(-|\s)\s*\d{1,2}:\d{2}',
+        caseSensitive: false,
+      );
+      final RegExp roomPattern = RegExp(
+        r'\d{3,}',
+        caseSensitive: false,
+      ); // Match 3+ digits for room
+
+      // --- Phase 1: Vertical Column Collection ---
+      for (var line in lines) {
+        String upperLine = line.toUpperCase().replaceAll(RegExp(r'\s+'), ' ');
+
+        // Check for DATE
+        if (extractedStartDate.isEmpty && upperLine.contains('DATE ENROLLED')) {
+          final RegExp dateRegex = RegExp(r'\d{1,2}/\s?\d{1,2}/\s?\d{2,4}');
+          final dateMatch = dateRegex.firstMatch(line);
+          if (dateMatch != null) {
+            extractedStartDate = _formatOcrDate(dateMatch.group(0)!);
+          }
+        }
+
+        // Check for column headers to switch state
+        if (upperLine.contains('COURSE NO.')) {
+          currentState = 'COURSE';
+          continue;
+        } else if (upperLine.contains('TIME')) {
+          currentState = 'TIME';
+          continue;
+        } else if (upperLine.contains('DAYS')) {
+          currentState = 'DAYS';
+          continue;
+        } else if (upperLine.contains('ROOM')) {
+          currentState = 'ROOM';
+          continue;
+        } else if (upperLine.contains('SCHED. NO.')) {
+          // Ignore schedule numbers, they confuse the course list
+          continue;
+        }
+
+        // Add line data to the correct list based on state
+        switch (currentState) {
+          case 'COURSE':
+            if (courseCodePattern.hasMatch(line)) {
+              courseCodes.add(line);
+            }
+            break;
+          case 'TIME':
+            // Handle split time data seen in the raw output (e.g., '3:00 PM')
+            // We will try to catch single times or merged times
+            if (timePattern.hasMatch(line)) {
+              times.add(line);
+            } else if (line.contains(RegExp(r'\d{1,2}:\d{2}\s*(PM|AM)'))) {
+              // Catch single time stamps
+              times.add(line);
+            }
+            break;
+          case 'DAYS':
+            // Days are simple: M, MW, FRI, TTH, etc.
+            if (line.length <= 3) {
+              days.add(line);
+            }
+            break;
+          case 'ROOM':
+            // Rooms are digits (like '536') or short codes.
+            if (roomPattern.hasMatch(line) || line.length <= 4) {
+              rooms.add(line);
+            }
+            break;
+          default:
+            // Ignore lines outside known sections
+            break;
+        }
+      }
+
+      // --- Phase 2: Horizontal Row Assembly ---
+      final int entryCount = courseCodes.length;
+
+      for (int i = 0; i < entryCount; i++) {
+        final String code = courseCodes[i].trim();
+
+        // Safely retrieve data from lists, defaulting to null/hardcoded value if the list is too short or empty
+        final String timeStr = (i < times.length && times[i].isNotEmpty)
+            ? times[i]
+            : '08:00 - 09:00 AM';
+        final String dayOfWeek = (i < days.length && days[i].isNotEmpty)
+            ? days[i]
+            : 'M';
+        final String roomNumber = (i < rooms.length && rooms[i].isNotEmpty)
+            ? rooms[i]
+            : 'N/A';
+
+        // Parse Time (Handle cases like "7:30 - 9:30 AM" or just "3:00 PM")
+        String startTime = '08:00';
+        String? endTime;
+
+        final RegExp timeSplit = RegExp(
+          r'(\d{1,2}:\d{2})\s*[-–\s](.+)\s*(PM|AM)',
+        ); // Matches 1:00 - 2:00 PM
+        final RegExp singleTime = RegExp(
+          r'(\d{1,2}:\d{2})\s*(PM|AM)',
+        ); // Matches 3:00 PM
+
+        final match = timeSplit.firstMatch(timeStr);
+
+        if (match != null) {
+          startTime = match.group(1)!;
+          endTime = match.group(2)!.trim();
+          final ampm = match.group(3)?.trim();
+          if (ampm != null) {
+            startTime = '$startTime $ampm';
+            endTime = '$endTime $ampm';
+          }
+        } else {
+          final singleMatch = singleTime.firstMatch(timeStr);
+          if (singleMatch != null) {
+            // FIX: String interpolation used here instead of concatenation
+            startTime = '${singleMatch.group(1)!} ${singleMatch.group(2)!}';
+            endTime = null;
+          } else {
+            // Last resort: just use the entire string as start time
+            startTime = timeStr;
+          }
+        }
+
+        // --- Title Guess ---
+        final String titleGuess =
+            'Class: ${code.replaceAll(RegExp(r'-\d+$|\d+$'), '').trim()}';
+
+        extractedList.add(
+          ScheduleEntry(
+            scheduleCode: code,
+            title: titleGuess,
+            scheduleType: 'class',
+            startDate: extractedStartDate.isEmpty
+                ? fallbackDate
+                : extractedStartDate,
+            endDate: null,
+
+            startTime: startTime,
+            endTime: endTime,
+            // FIX: The condition for dayOfWeek is now always true because 'M' is not nullable.
+            // We use .isNotEmpty which is safer, but DayOfWeek is a String here, so it's not strictly null.
+            repeatFrequency: (dayOfWeek.isNotEmpty) ? 'weekly' : 'none',
+            dayOfWeek: dayOfWeek,
+            room: roomNumber,
+
+            // Mock metadata
+            id: i + 1,
+            userId: 0,
+            uploaderName: 'Self-Upload',
+            isActive: true,
+            createdAt: DateTime.now().toIso8601String(),
+          ),
+        );
+      }
+
+      return extractedList; // Return the list from the try block
+    } catch (e) {
+      debugPrint('Error during OCR processing: $e');
+      // Rethrow or return an empty list depending on desired error handling behavior
+      rethrow;
+    } finally {
+      // 2. CRITICAL: Ensure the recognizer is closed in the finally block
+      textRecognizer.close();
+    }
   }
 
   // --------------------------------------------------------------------------------

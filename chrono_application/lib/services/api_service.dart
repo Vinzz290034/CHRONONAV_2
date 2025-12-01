@@ -412,6 +412,20 @@ class ApiService {
         .toList();
   }
 
+  // lib/services/api_service.dart (Inside ApiService class)
+
+  /// Deletes a single schedule entry from the database.
+  Future<Map<String, dynamic>> deleteScheduleEntry(String scheduleId) async {
+    // NOTE: Assuming _sendAuthenticatedRequest is available in this class
+    final response = await _sendAuthenticatedRequest(
+      'schedules/delete/$scheduleId', // New DELETE route
+      'DELETE', // Uses the DELETE HTTP method
+      failureMessage: 'Failed to delete schedule entry.',
+    );
+
+    return response;
+  }
+
   // ------------------------------------------------------------------------
   // --- AUTHENTICATION HELPER ---
   // ------------------------------------------------------------------------

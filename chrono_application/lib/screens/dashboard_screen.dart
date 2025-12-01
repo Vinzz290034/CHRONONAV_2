@@ -1,3 +1,5 @@
+// lib/screens/dashboard_screen.dart
+
 import 'package:flutter/material.dart';
 // Note: You must ensure these imported files exist and define the classes.
 import 'schedule_screen.dart';
@@ -264,7 +266,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final currentCourses = _getUpcomingClasses();
 
     final index = currentCourses.indexWhere(
-      (entry) => entry.scheduleCode == updatedEntry.scheduleCode,
+      (entry) =>
+          entry.id == updatedEntry.id, // Match by ID is safer than scheduleCode
     );
 
     if (index != -1) {
@@ -279,6 +282,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
           content: Text('Schedule updated locally! (API sync pending)'),
         ),
       );
+    }
+  }
+
+  // 3. ❌ NEW: Delete Handler - Performs API call and updates local state
+  Future<void> _deleteScheduleEntry(ScheduleEntry entry) async {
+    final scheduleId = entry.id;
+    if (scheduleId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error: Schedule ID is missing.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // 1. Call the API service to delete the entry
+      await _apiService.deleteScheduleEntry(scheduleId.toString());
+
+      // 2. Update local state by removing the deleted entry
+      final currentCourses = _getUpcomingClasses();
+      final List<ScheduleEntry> newCourses = currentCourses
+          .where((e) => e.id != scheduleId)
+          .toList();
+
+      _updateScheduleData(newCourses);
+
+      // Show success message
+      // ignore: use_build_context_synchronously
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '✅ Schedule ${entry.scheduleCode} deleted successfully!',
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('Error deleting schedule: $e');
+      // Show failure message
+      // ignore: use_build_context_synchronously
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Failed to delete schedule: ${e.toString()}')),
+      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -337,31 +389,56 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const SizedBox(height: 10),
                   SizedBox(
                     height: 35,
-                    child: OutlinedButton(
-                      onPressed: () async {
-                        final updatedEntry = await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                EditScheduleEntryScreen(entry: data),
-                          ),
-                        );
+                    child: Row(
+                      // <-- Row added to contain both buttons
+                      children: [
+                        // View / Edit Button
+                        OutlinedButton(
+                          onPressed: () async {
+                            final updatedEntry = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    EditScheduleEntryScreen(entry: data),
+                              ),
+                            );
 
-                        if (updatedEntry is ScheduleEntry) {
-                          _handleEntryUpdate(updatedEntry);
-                        }
-                      },
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        side: BorderSide(color: Theme.of(context).dividerColor),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                            if (updatedEntry is ScheduleEntry) {
+                              _handleEntryUpdate(updatedEntry);
+                            }
+                          },
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            side: BorderSide(
+                              color: Theme.of(context).dividerColor,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: Text(
+                            'View / Edit',
+                            style: TextStyle(color: primaryColor),
+                          ),
                         ),
-                      ),
-                      child: Text(
-                        'View / Edit',
-                        style: TextStyle(color: primaryColor),
-                      ),
+
+                        const SizedBox(width: 8), // Spacer
+                        // ❌ MODIFIED: Delete Text Button
+                        TextButton(
+                          onPressed: () => _confirmDeletion(data),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                            ), // Reduced padding for compactness
+                            minimumSize: Size.zero, // Minimal size constraint
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            textStyle: const TextStyle(fontSize: 14),
+                            foregroundColor:
+                                Colors.red.shade600, // Explicit red color
+                          ),
+                          child: const Text('Delete'),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -399,6 +476,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
         const SizedBox(height: 15),
       ],
     );
+  }
+
+  // 4. 🗑️ NEW: Confirmation Dialog
+  Future<void> _confirmDeletion(ScheduleEntry entry) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Confirm Deletion'),
+          content: Text(
+            'Are you sure you want to delete the schedule for ${entry.scheduleCode}? This action cannot be undone.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete == true) {
+      await _deleteScheduleEntry(entry);
+    }
   }
 
   Widget _buildSummaryCard(BuildContext context) {

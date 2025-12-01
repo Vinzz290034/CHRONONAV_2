@@ -904,6 +904,33 @@ app.put('/api/schedules/update/:id', verifyToken, async (req, res) => {
 });
 
 
+// server.js (Inside SCHEDULE ROUTES section)
+
+// DELETE /api/schedules/delete/:id: Delete a single schedule entry
+app.delete('/api/schedules/delete/:id', verifyToken, async (req, res) => {
+    const userId = req.user.id;
+    const scheduleId = req.params.id; // Get the ID from the URL parameter
+
+    // CRITICAL: Ensure we delete only the user's record
+    const deleteQuery = `
+        DELETE FROM add_pdf
+        WHERE id = ? AND user_id = ?
+    `;
+
+    try {
+        const [results] = await pool.execute(deleteQuery, [scheduleId, userId]);
+
+        if (results.affectedRows === 0) {
+            return res.status(404).json({ success: false, message: 'Schedule entry not found or unauthorized to delete.' });
+        }
+
+        return res.status(200).json({ success: true, message: 'Schedule deleted successfully!' });
+    } catch (error) {
+        return handleServerError(res, error, 'Database deletion error for delete_schedule');
+    }
+});
+
+
 // ------------------------------------------------------------------------------
 // PERSONAL CALENDAR EVENT ROUTES (user_calendar_events table)
 // ------------------------------------------------------------------------------

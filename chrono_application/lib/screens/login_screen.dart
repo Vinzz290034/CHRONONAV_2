@@ -26,8 +26,8 @@ class LoginScreenState extends State<LoginScreen> {
   String? _errorMessage;
 
   // Define brand colors consistent with the registration screen (These are constants, not theme-dependent)
-  final Color chrononaPrimaryColor = const Color(0xFF007A5A);
-  final Color chrononaAccentColor = const Color(0xFF4CAF50);
+  final Color chrononaPrimaryColor = const Color.fromARGB(255, 51, 153, 243);
+  final Color chrononaAccentColor = const Color.fromARGB(255, 49, 156, 251);
 
   @override
   void dispose() {
@@ -108,7 +108,7 @@ class LoginScreenState extends State<LoginScreen> {
               Image.asset('assets/images/chrononav_logo.jpg', height: 80),
               const SizedBox(height: 20),
               Text(
-                'Welcome Back',
+                'ChronoNav',
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
@@ -117,7 +117,7 @@ class LoginScreenState extends State<LoginScreen> {
                 textAlign: TextAlign.center,
               ),
               Text(
-                'Sign in to continue to ChronoNav.',
+                'Navigate your campus with ease.',
                 style: TextStyle(fontSize: 16, color: secondaryTextColor),
                 textAlign: TextAlign.center,
               ),
@@ -128,7 +128,7 @@ class LoginScreenState extends State<LoginScreen> {
                 context,
                 controller: _emailController,
                 label: 'Email Address',
-                hintText: 'name@school.edu',
+                hintText: 'Enter your email address',
                 keyboardType: TextInputType.emailAddress,
                 validator: (value) => value!.contains('@')
                     ? null
