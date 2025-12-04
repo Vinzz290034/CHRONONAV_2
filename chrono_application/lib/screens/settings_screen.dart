@@ -184,7 +184,7 @@ class SettingsScreen extends StatelessWidget {
           color: defaultIconColor,
         ),
         title: const Text(
-          'Settings',
+          'Account Settings',
           style: TextStyle(fontWeight: FontWeight.w800, fontSize: 22),
         ),
         centerTitle: true,
@@ -262,20 +262,6 @@ class SettingsScreen extends StatelessWidget {
                     onChanged: onToggleDarkMode,
                     activeColor: chrononaPrimaryColor,
                   ),
-                ),
-                _buildSettingsItem(
-                  context,
-                  icon: Icons.notifications_active_rounded,
-                  title: 'Notifications',
-                  iconColor: defaultIconColor,
-                  titleColor: defaultTitleColor,
-                  trailingWidget: Switch.adaptive(
-                    value: true, // Placeholder value
-                    onChanged: (bool value) =>
-                        debugPrint('Notifications switched to $value'),
-                    activeColor: chrononaPrimaryColor,
-                  ),
-                  showDivider: false,
                 ),
               ],
             ),

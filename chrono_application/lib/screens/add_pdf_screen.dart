@@ -758,7 +758,7 @@ class _AddPdfScreenState extends State<AddPdfScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text('Upload Study Load'),
+        title: const Text('OCR Upload Module'),
         centerTitle: true,
       ),
       body: Padding(
@@ -767,7 +767,7 @@ class _AddPdfScreenState extends State<AddPdfScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text(
-              'Upload your study load document (PDF or image) to automatically extract your class schedule.',
+              'Upload your study load document (PDF) to automatically extract your class schedule.',
               style: TextStyle(fontSize: 14, color: hintColor),
             ),
             const SizedBox(height: 30),
@@ -776,7 +776,7 @@ class _AddPdfScreenState extends State<AddPdfScreen> {
             _buildUploadButton(
               context,
               icon: Icons.upload_file,
-              title: 'Upload from File (PDF/Image)',
+              title: 'Upload from File (PDF)',
               onTap: _pickFile,
             ),
             const SizedBox(height: 15),
@@ -843,7 +843,7 @@ class _AddPdfScreenState extends State<AddPdfScreen> {
                       ),
                       child: Center(
                         child: Text(
-                          'Select a PDF or image to begin automatic schedule extraction.',
+                          'Select a PDF to begin automatic schedule extraction.',
                           style: TextStyle(
                             color: hintColor,
                             fontStyle: FontStyle.italic,

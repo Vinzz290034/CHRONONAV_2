@@ -131,7 +131,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Help & Support')),
+      appBar: AppBar(title: const Text('Help Center')),
       body: RefreshIndicator(
         // Added RefreshIndicator for pulling down to refresh tickets
         onRefresh: _fetchTickets,
@@ -252,7 +252,7 @@ class _HelpCenterScreenState extends State<HelpCenterScreen> {
 
               // --- FAQ Section ---
               const Text(
-                'Frequently Asked Questions',
+                'FAQs',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),

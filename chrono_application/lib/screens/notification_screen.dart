@@ -1,6 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // 🎯 NEW: For persistence
-import '../models/schedule_entry.dart'; // IMPORTANT: ScheduleEntry model
+import 'package:shared_preferences/shared_preferences.dart';
+// import 'package:intl/intl.dart'; // Assuming you have intl for time formatting
+
+// --- PROJECT IMPORTS ---
+import '../models/schedule_entry.dart';
+import '../services/api_service.dart';
+
+// NOTE: The conflicting placeholder class PersonalEvent has been removed.
+// We must rely on the external import for PersonalEvent.
+
+// Placeholder colors derived from schedule_screen.dart constants
+const Color kAccentColor = Color(0xFF4CAF50);
+const Color kCourseColor = Color(0xFF7CB342);
+
+// === Start of NotificationScreen Code ===
 
 class NotificationScreen extends StatefulWidget {
   // 🎯 REQUIRED: Accept the list of schedules from the Dashboard
@@ -13,13 +26,21 @@ class NotificationScreen extends StatefulWidget {
 }
 
 class _NotificationScreenState extends State<NotificationScreen> {
-  // 2. State variables for general notification settings (Initial state will be overwritten by storage)
+  // --- Data & State ---
+  final ApiService _apiService = ApiService();
+
   bool _pushAlertsEnabled = true;
   bool _eventRemindersEnabled = true;
   bool _systemUpdatesEnabled = false;
 
-  // Stores the *user's preference* for each class, independent of master switch
+  // 🎯 NEW STATE: Fetched list of personal events
+  List<dynamic> _personalEvents =
+      []; // Use dynamic to avoid invalid assignment conflict
+  bool _isLoadingEvents = true;
+
+  // Stores the *user's preference* for each class/event
   final Map<String, bool> _classPreferenceStates = {};
+  final Map<int, bool> _eventPreferenceStates = {};
 
   // Tracks the currently selected entry for the detailed view.
   ScheduleEntry? _selectedEntry;
@@ -28,32 +49,63 @@ class _NotificationScreenState extends State<NotificationScreen> {
   Color get _textColor => Theme.of(context).textTheme.bodyMedium!.color!;
   Color get _hintColor => Theme.of(context).hintColor;
   Color get _primaryColor => Theme.of(context).colorScheme.primary;
+  Color get _eventAccentColor => kAccentColor;
 
   @override
   void initState() {
     super.initState();
-    // 1. Load saved preferences
+
+    // 1. Load saved preferences (General Settings)
     _loadPreferences();
 
-    // 2. Initialize class preference states (Defaults to true, will be managed by master switch)
+    // 2. Load Personal Events (NEW STEP)
+    _fetchPersonalEvents();
+
+    // 3. Initialize class preference states
     for (var entry in widget.scheduleEntries) {
       if (entry.scheduleCode.isNotEmpty) {
-        // We initialize preferences here, but they are subject to the master switch state
         _classPreferenceStates[entry.scheduleCode] = true;
       }
     }
 
-    // 3. Set the first class as the initially selected detail alert
+    // 4. Set the first class as the initially selected detail alert
     if (widget.scheduleEntries.isNotEmpty) {
       _selectedEntry = widget.scheduleEntries.first;
     }
   }
 
-  // 🎯 NEW: Async method to load saved preferences
+  // 🎯 NEW: Async method to fetch real personal events
+  Future<void> _fetchPersonalEvents() async {
+    try {
+      // NOTE: ApiService.fetchPersonalEvents is assumed to return List<PersonalEvent>
+      final List<dynamic> fetchedEvents = await _apiService
+          .fetchPersonalEvents();
+
+      setState(() {
+        _personalEvents = fetchedEvents;
+        _isLoadingEvents = false;
+
+        // Initialize preferences for fetched events
+        // Using dynamic map access since we can't strongly type the item here
+        for (var event in fetchedEvents) {
+          final int eventId =
+              event.id as int; // Assuming 'id' is available and an int
+          _eventPreferenceStates[eventId] = true; // Default to true
+        }
+      });
+    } catch (e) {
+      debugPrint('Error fetching personal events: $e');
+      setState(() {
+        _isLoadingEvents = false;
+        _personalEvents = [];
+      });
+    }
+  }
+
+  // 🎯 NEW: Async method to load saved preferences (Remains the same)
   Future<void> _loadPreferences() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // Load general settings, defaulting to current code defaults if not found
     final bool savedPush = prefs.getBool('pref_push_alerts') ?? true;
     final bool savedEvent = prefs.getBool('pref_event_reminders') ?? true;
     final bool savedSystem = prefs.getBool('pref_system_updates') ?? false;
@@ -63,24 +115,23 @@ class _NotificationScreenState extends State<NotificationScreen> {
       _eventRemindersEnabled = savedEvent;
       _systemUpdatesEnabled = savedSystem;
     });
-    // NOTE: Class-specific preferences would require separate, dedicated storage/loading logic.
   }
 
-  // 🎯 NEW: Method to save preference changes
+  // 🎯 NEW: Method to save preference changes (Remains the same)
   Future<void> _savePreference(String key, bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(key, value);
     debugPrint('Preference saved: $key = $value');
   }
 
-  // Moves the tapped entry to the detailed view position
+  // Moves the tapped entry to the detailed view position (Remains the same)
   void _selectEntryForDetail(ScheduleEntry entry) {
     setState(() {
       _selectedEntry = entry;
     });
   }
 
-  // Helper widget for a single notification setting row (General Settings)
+  // Helper widget for a single notification setting row (General Settings) (Remains the same)
   Widget _buildSettingRow({
     required BuildContext context,
     required IconData icon,
@@ -88,7 +139,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     required String subtitle,
     required bool value,
     required ValueChanged<bool> onChanged,
-    required String prefsKey, // 🎯 NEW: Key for saving to SharedPreferences
+    required String prefsKey,
     bool enabled = true,
   }) {
     return Padding(
@@ -148,12 +199,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
     );
   }
 
-  // Builds the detailed class alert card
+  // Builds the detailed class alert card (Remains the same)
   Widget _buildDetailedAlertCard(ScheduleEntry entry) {
-    // 🎯 Use individual preference for switch state, but disable if master is off
+    // ... (logic remains the same)
     final bool isIndividuallyEnabled =
         _classPreferenceStates[entry.scheduleCode] ?? false;
-
     final String timeDetail = entry.startTime.isNotEmpty
         ? entry.startTime
         : 'TBA';
@@ -268,9 +318,9 @@ class _NotificationScreenState extends State<NotificationScreen> {
     );
   }
 
-  // Builds the list tile for the 'Other Classes' section
+  // Builds the list tile for the 'Other Classes' section (Remains the same)
   Widget _buildOtherClassTile(ScheduleEntry entry) {
-    // 🎯 Use individual preference for switch state, but disable if master is off
+    // ... (logic remains the same)
     final bool isIndividuallyEnabled =
         _classPreferenceStates[entry.scheduleCode] ?? false;
     final bool switchEnabled = _pushAlertsEnabled; // Master switch state
@@ -318,15 +368,63 @@ class _NotificationScreenState extends State<NotificationScreen> {
     );
   }
 
-  // 3. Function to handle the "Turn All Off" action
+  // 🎯 NEW: Builds the list tile for 'Personal Events' section
+  Widget _buildPersonalEventTile(dynamic event) {
+    // We use dynamic access here since we rely on the external type
+    final int eventId = event.id as int;
+    final bool isIndividuallyEnabled = _eventPreferenceStates[eventId] ?? false;
+    final bool switchEnabled =
+        _eventRemindersEnabled; // Master switch state for reminders
+
+    // NOTE: This assumes the event object has 'startDate' and 'location' properties
+    final String timeDetail = (event.startDate != null)
+        ? 'Time: TBD' // Placeholder: Use DateFormat('h:mm a').format(event.startDate) in real code
+        : 'Time: TBA';
+
+    final String locationDetail = (event.location?.isNotEmpty == true)
+        ? event.location as String
+        : (event.eventType ?? 'Event');
+
+    final String title = event.eventName as String;
+
+    return ListTile(
+      leading: Icon(Icons.calendar_month, color: _eventAccentColor),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+      // FIX: Use string interpolation for clean composition
+      subtitle: Text(
+        '$locationDetail | $timeDetail',
+        style: TextStyle(color: _hintColor),
+      ),
+      trailing: Switch(
+        value: isIndividuallyEnabled,
+        onChanged: switchEnabled
+            ? (newValue) {
+                setState(() {
+                  _eventPreferenceStates[eventId] = newValue;
+                });
+                // TODOAPI call to save alert preference for this personal event
+              }
+            : null,
+        activeColor: _eventAccentColor,
+        // ignore: deprecated_member_use
+        inactiveThumbColor: _hintColor.withOpacity(0.5),
+        // ignore: deprecated_member_use
+        inactiveTrackColor: _hintColor.withOpacity(0.2),
+      ),
+      onTap: () {
+        // Optional: Implement a detailed view logic for personal events if needed
+      },
+    );
+  }
+
+  // 3. Function to handle the "Turn All Off" action (Remains the same)
   void _turnAllOff() {
     setState(() {
-      _pushAlertsEnabled = false; // Turn off the master switch
+      _pushAlertsEnabled = false;
       _eventRemindersEnabled = false;
       _systemUpdatesEnabled = false;
 
-      // Class preferences are NOT mass-reset, they are controlled by the master switch being off.
-      // We only turn off the master setting here.
+      // Save master switches
       _savePreference('pref_push_alerts', false);
       _savePreference('pref_event_reminders', false);
       _savePreference('pref_system_updates', false);
@@ -342,6 +440,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
     final List<ScheduleEntry> otherClasses = classes
         .where((entry) => entry.scheduleCode != _selectedEntry?.scheduleCode)
         .toList();
+
+    final List<dynamic> personalEvents = _personalEvents;
 
     return Scaffold(
       appBar: AppBar(
@@ -409,6 +509,30 @@ class _NotificationScreenState extends State<NotificationScreen> {
               const SizedBox(height: 10),
               // Build the list of non-selected classes
               ...otherClasses.map((entry) => _buildOtherClassTile(entry)),
+            ],
+
+            // ===============================================
+            // 🎯 PERSONAL EVENTS SECTION INTEGRATION (Dynamic Data)
+            // ===============================================
+            if (_isLoadingEvents)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20.0),
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            else if (personalEvents.isNotEmpty) ...[
+              const SizedBox(height: 30), // Spacing above the new section
+              Text(
+                'Personal Events (${personalEvents.length})', // New Header
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 10),
+              // Build the list of personal event tiles
+              ...personalEvents.map((event) => _buildPersonalEventTile(event)),
             ],
 
             const SizedBox(height: 30),

@@ -22,7 +22,8 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     'General Feedback',
   ];
   String? _selectedFeedbackType;
-  double _currentRating = 5.0; // Default rating (1-10 range)
+  // 🎯 FIX 1: Change default rating to be within the 1-5 range
+  double _currentRating = 3.0; // Default rating (1-5 range)
 
   final ApiService _apiService = ApiService();
   bool _isLoading = false;
@@ -59,13 +60,12 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     final message = _messageController.text.trim();
 
     try {
-      // The ApiService throws an Exception on non-2xx status codes (400, 401, 404, 500)
-      // If this line executes without throwing, the submission was successful (status 201).
+      // Send the rating (1-5) to the API
       final response = await _apiService.submitFeedback(
         subject: subject,
         message: message,
         feedbackType: _selectedFeedbackType!,
-        rating: _currentRating.toInt(), // Send as integer (1-10)
+        rating: _currentRating.toInt(), // Send as integer (1-5)
       );
 
       if (mounted) {
@@ -131,7 +131,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'Send Feedback',
+          'FeedBack Module',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
@@ -146,7 +146,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
               DropdownButtonFormField<String>(
                 value: _selectedFeedbackType,
                 decoration: const InputDecoration(
-                  labelText: 'Feedback Type',
+                  labelText: 'Pick feedBack Type',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.category),
                 ),
@@ -197,7 +197,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                 controller: _messageController,
                 maxLines: 6,
                 decoration: const InputDecoration(
-                  labelText: 'Your Message',
+                  labelText: 'Submit Suggestions / Feedback',
                   hintText: 'Describe your feedback or issue in detail...',
                   border: OutlineInputBorder(),
                 ),
@@ -215,11 +215,12 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Satisfaction Rating:',
+                    'Rate App:',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
+                  // 🎯 FIX 2: Change display text to show score out of 5
                   Text(
-                    '${_currentRating.toInt()} / 10',
+                    '${_currentRating.toInt()} / 5',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       color: Theme.of(context).primaryColor,
@@ -230,8 +231,10 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
               Slider(
                 value: _currentRating,
                 min: 1,
-                max: 10,
-                divisions: 9, // 1 to 10 inclusive, so 9 divisions
+                // 🎯 FIX 3: Change max value to 5
+                max: 5,
+                // 🎯 FIX 4: Change divisions to 4 (for steps 1, 2, 3, 4, 5)
+                divisions: 4,
                 label: _currentRating.round().toString(),
                 onChanged: (double value) {
                   setState(() {
@@ -268,7 +271,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                       )
                     : const Icon(Icons.send),
                 label: Text(
-                  _isLoading ? 'Submitting...' : 'Send Feedback',
+                  _isLoading ? 'Submitting...' : 'Feedback Module',
                   style: const TextStyle(fontSize: 18),
                 ),
                 style: ElevatedButton.styleFrom(

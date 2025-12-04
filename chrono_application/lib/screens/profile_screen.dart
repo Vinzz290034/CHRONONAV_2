@@ -283,7 +283,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onPressed: widget.onBackToSettings,
         ),
         title: const Text(
-          'My Account',
+          'Profile Management',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         centerTitle: true,

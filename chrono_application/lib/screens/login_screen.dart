@@ -48,13 +48,16 @@ class LoginScreenState extends State<LoginScreen> {
 
     try {
       final userData = await _apiService.loginUser(
+        // CRITICAL FIX: Ensure email is trimmed to prevent database lookup errors
+        // caused by trailing spaces from web registration.
         _emailController.text.trim(),
         _passwordController.text,
       );
 
       if (mounted) {
+        // 🎯 FIX 1: Access the correct user data key, which is 'name' from the database.
         final String greetingName =
-            (userData['fullname'] as String?)?.split(' ').first ?? 'User';
+            (userData['name'] as String?)?.split(' ').first ?? 'User';
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -83,18 +86,17 @@ class LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     // FIX 1: Replace deprecated onBackground/background with onSurface/surface
-    final Color textColor = Theme.of(
-      context,
-    ).colorScheme.onSurface; // Was onBackground
+    final Color textColor = Theme.of(context).colorScheme.onSurface;
+
     // FIX 2: Use .withOpacity() replacement for opacity control
     final Color secondaryTextColor = Theme.of(
       context,
       // ignore: deprecated_member_use
-    ).colorScheme.onSurface.withOpacity(0.6); // Was onSurface.withOpacity(0.6)
+    ).colorScheme.onSurface.withOpacity(0.6);
 
     return Scaffold(
       // FIX 3: Replace deprecated background with surface
-      backgroundColor: Theme.of(context).colorScheme.surface, // Was background
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 24.0),
         child: Form(
@@ -248,9 +250,6 @@ class LoginScreenState extends State<LoginScreen> {
     // FIX 4: Use onSurface instead of deprecated onBackground
     final Color textColor = Theme.of(context).colorScheme.onSurface;
 
-    // NOTE: .withOpacity() is fine here, but use .withAlpha() or .withValues()
-    // if you need more control/precision, as warned by the linter.
-    // For this case, opacity is usually sufficient.
     final Color hintColor = Theme.of(context).brightness == Brightness.dark
         ? Colors.grey[600]!
         : Colors.grey[400]!;

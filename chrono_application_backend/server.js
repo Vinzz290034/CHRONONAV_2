@@ -257,11 +257,16 @@ const uploadSchedulePdf = multer({
 
 // POST /api/login: User login endpoint
 app.post('/api/login', async (req, res) => {
-// ... [Login logic unchanged]
     const { email, password } = req.body;
 
     if (!email || !password) {
         return res.status(400).json({ message: 'Email and password are required.' });
+    }
+
+    // ADDED: Input validation for email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        return res.status(400).json({ message: 'Invalid email format.' });
     }
 
     try {
@@ -269,6 +274,7 @@ app.post('/api/login', async (req, res) => {
         const [results] = await pool.query(query, [email]);
 
         if (results.length === 0) {
+            // Security: Use a generic error message
             return res.status(401).json({ message: 'Invalid email or password.' });
         }
 
@@ -305,6 +311,7 @@ app.post('/api/login', async (req, res) => {
                 user: userData
             });
         } else {
+            // Security: Use a generic error message
             return res.status(401).json({ message: 'Invalid email or password.' });
         }
     } catch (error) {
@@ -314,12 +321,37 @@ app.post('/api/login', async (req, res) => {
 
 // POST /api/register: User registration endpoint
 app.post('/api/register', async (req, res) => {
-// ... [Registration logic unchanged]
     const { fullname, email, password, role, course, department } = req.body;
 
+    // Basic required field check
     if (!fullname || !email || !password || !role || !course || !department) {
         return res.status(400).json({ message: 'All fields are required.' });
     }
+
+    // --- CRITICAL SECURITY & DATA VALIDATION ADDED HERE ---
+    
+    // Email Format Validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        return res.status(400).json({ message: 'Invalid email format.' });
+    }
+
+    // Role ENUM Validation (Fixes the blank role issue)
+    const allowedRoles = ['user', 'faculty', 'admin']; 
+    if (!allowedRoles.includes(role.toLowerCase())) {
+        return res.status(400).json({ 
+            message: `Invalid role specified. Role must be one of: ${allowedRoles.join(', ')}.` 
+        });
+    }
+
+    // Input Length Validation (Checks against varchar(100) limit)
+    const MAX_VARCHAR_LENGTH = 100;
+    if (fullname.length > MAX_VARCHAR_LENGTH || course.length > MAX_VARCHAR_LENGTH || department.length > MAX_VARCHAR_LENGTH) {
+        return res.status(400).json({ 
+            message: `Input fields (Name, Course, Department) must be less than or equal to ${MAX_VARCHAR_LENGTH} characters.` 
+        });
+    }
+    // --- END VALIDATION ---
 
     try {
         const [checkResults] = await pool.query('SELECT email FROM users WHERE email = ?', [email]);
@@ -332,15 +364,18 @@ app.post('/api/register', async (req, res) => {
         
         const defaultProfileImg = 'uploads/profile_photos/default-avatar.png'; 
         
+        // Ensure the role variable being inserted is consistently lowercased to match the ENUM
+        const normalizedRole = role.toLowerCase(); 
+
         const insertQuery = `INSERT INTO users (name, email, password, role, course, department, profile_img, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, 1)`;
 
         const [results] = await pool.query(insertQuery, 
-            [fullname, email, hashedPassword, role, course, department, defaultProfileImg]
+            [fullname, email, hashedPassword, normalizedRole, course, department, defaultProfileImg]
         );
         
         const userId = results.insertId;
         const token = jwt.sign(
-            { id: userId, email: email, role: role },
+            { id: userId, email: email, role: normalizedRole },
             JWT_SECRET,
             { expiresIn: '24h' }
         );
@@ -354,7 +389,7 @@ app.post('/api/register', async (req, res) => {
                 id: userId, 
                 name: fullname, 
                 email: email, 
-                role: role, 
+                role: normalizedRole, 
                 course: course, 
                 department: department,
                 photo_url: photo_url 

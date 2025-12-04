@@ -9,7 +9,6 @@ class MinimalistRegistrationScreen extends StatefulWidget {
   const MinimalistRegistrationScreen({required this.onLoginTap, super.key});
 
   @override
-  // Corrected State class name
   State<MinimalistRegistrationScreen> createState() =>
       _MinimalistRegistrationScreenState();
 }
@@ -30,9 +29,20 @@ class _MinimalistRegistrationScreenState
   bool _isLoading = false;
   String? _errorMessage;
 
-  // Color constants
+  // Constants
   final Color chrononaPrimaryColor = const Color(0xFF007A5A);
   final Color chrononaAccentColor = const Color(0xFF4CAF50);
+  final int maxInputLength = 100; // Matches server's varchar(100)
+
+  // Explicitly defining roles to match server ENUM
+  final List<String> displayRoles = [
+    'User',
+    'Faculty',
+    'Admin',
+  ]; // Roles for display
+
+  // Maps display role to the lowercase value expected by the backend
+  String? get apiRole => _selectedRole?.toLowerCase();
 
   @override
   void dispose() {
@@ -46,15 +56,15 @@ class _MinimalistRegistrationScreenState
 
   // --- Registration Logic ---
   void _handleRegistration() async {
+    // 1. Client-Side Validation (uses all the new validators)
     if (!_formKey.currentState!.validate()) {
-      return; // Stop if the form is invalid
+      return;
     }
-    // Convert role to lowercase for API if needed, but using as-is for now
-    String apiRole = _selectedRole?.toLowerCase() ?? '';
 
-    if (apiRole.isEmpty) {
+    // Additional check for role selection (covered by validator, but safe to check)
+    if (apiRole == null || apiRole!.isEmpty) {
       setState(() => _errorMessage = 'Please select a role.');
-      return; // Stop if no role is selected
+      return;
     }
 
     setState(() {
@@ -67,14 +77,13 @@ class _MinimalistRegistrationScreenState
         fullname: _fullnameController.text,
         email: _emailController.text,
         password: _passwordController.text,
-        role: apiRole, // Use lowercase role if your backend expects it
+        role: apiRole!, // Guaranteed non-null by validation
         course: _courseController.text,
         department: _departmentController.text,
       );
 
       // Registration successful!
       if (mounted) {
-        // Show success message and navigate to Login
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('Registration successful! You can now log in.'),
@@ -86,10 +95,9 @@ class _MinimalistRegistrationScreenState
         widget.onLoginTap();
       }
     } on Exception catch (e) {
-      // Handle the error thrown by ApiService
       if (mounted) {
         setState(() {
-          // Display a user-friendly error message
+          // Display a user-friendly error message from the server response
           _errorMessage = e.toString().replaceFirst(
             'Exception: ',
             'Registration Failed: ',
@@ -114,7 +122,6 @@ class _MinimalistRegistrationScreenState
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF333333)),
-          // USE THE CALLBACK FOR THE BACK BUTTON
           onPressed: widget.onLoginTap,
         ),
       ),
@@ -151,32 +158,50 @@ class _MinimalistRegistrationScreenState
                 controller: _fullnameController,
                 label: 'Your full name',
                 hintText: 'Enter your name',
+                // Added Length Validation
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Full Name is required.';
+                  }
+                  // FIX 1: Removed unnecessary braces around maxInputLength
+                  if (value.length > maxInputLength) {
+                    return 'Max $maxInputLength characters allowed.';
+                  }
+                  return null;
+                },
               ),
               _buildMinimalistInputField(
                 controller: _emailController,
                 label: 'Enter your email',
                 hintText: 'name@school.edu',
                 keyboardType: TextInputType.emailAddress,
-                validator: (value) =>
-                    value!.contains('@') ? null : 'Enter a valid email.',
+                // Enhanced Email Validation
+                validator: (value) {
+                  const pattern = r'^[^\s@]+@[^\s@]+\.[^\s@]+$';
+                  final regex = RegExp(pattern);
+                  if (value == null || !regex.hasMatch(value)) {
+                    return 'Enter a valid email address.';
+                  }
+                  return null;
+                },
               ),
               _buildMinimalistInputField(
                 controller: _passwordController,
                 label: 'Create a password',
                 hintText: 'Minimum 8 characters',
                 isPassword: true,
-                validator: (value) => value!.length >= 8
+                // Enhanced Password Validation (Min 8 chars)
+                validator: (value) => value != null && value.length >= 8
                     ? null
                     : 'Password must be 8+ characters.',
               ),
               const SizedBox(height: 10),
 
-              // Select role (student, faculty) - Dropdown
+              // Select role (Dropdown with validated options)
               _buildMinimalistDropdown(
                 label: 'Select Role',
                 value: _selectedRole,
-                // NOTE: 'user' and 'faculty' might be safer to align with your database enum (image_e6872b.png)
-                items: const ['Student', 'Faculty'],
+                items: displayRoles, // Uses the strictly defined roles
                 onChanged: (String? newValue) =>
                     setState(() => _selectedRole = newValue),
                 primaryColor: chrononaPrimaryColor,
@@ -186,11 +211,33 @@ class _MinimalistRegistrationScreenState
                 controller: _courseController,
                 label: 'Your course',
                 hintText: 'e.g., BSIT, BSEE',
+                // Added Length Validation
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Course is required.';
+                  }
+                  // FIX 2: Removed unnecessary braces around maxInputLength
+                  if (value.length > maxInputLength) {
+                    return 'Max $maxInputLength characters allowed.';
+                  }
+                  return null;
+                },
               ),
               _buildMinimalistInputField(
                 controller: _departmentController,
                 label: 'Your department',
                 hintText: 'e.g., Computer Science',
+                // Added Length Validation
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Department is required.';
+                  }
+                  // FIX 3: Removed unnecessary braces around maxInputLength
+                  if (value.length > maxInputLength) {
+                    return 'Max $maxInputLength characters allowed.';
+                  }
+                  return null;
+                },
               ),
 
               const SizedBox(height: 20),
@@ -250,7 +297,6 @@ class _MinimalistRegistrationScreenState
                     style: TextStyle(color: Colors.grey[700]),
                   ),
                   GestureDetector(
-                    // USE THE CALLBACK FOR THE LOGIN HERE LINK
                     onTap: widget.onLoginTap,
                     child: Text(
                       'Login here',
@@ -298,9 +344,7 @@ class _MinimalistRegistrationScreenState
             obscureText: isPassword,
             keyboardType: keyboardType,
             style: const TextStyle(fontSize: 16),
-            validator:
-                validator ??
-                (value) => value!.isEmpty ? 'This field is required.' : null,
+            validator: validator, // Use provided or default validator
             decoration: InputDecoration(
               hintText: hintText,
               hintStyle: TextStyle(color: Colors.grey[400]),
@@ -371,6 +415,7 @@ class _MinimalistRegistrationScreenState
             ),
             hint: const Text('Select your role'),
             isExpanded: true,
+            // Maps the display role (e.g., 'User') to the DropdownMenuItem
             items: items
                 .map(
                   (String item) => DropdownMenuItem<String>(
@@ -380,6 +425,7 @@ class _MinimalistRegistrationScreenState
                 )
                 .toList(),
             onChanged: onChanged,
+            // Ensures a role is selected (prevents blank role in API call)
             validator: (value) =>
                 value == null ? 'Please select a role.' : null,
           ),

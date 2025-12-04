@@ -1,3 +1,5 @@
+// add_personal_event_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -5,13 +7,12 @@ import 'package:intl/intl.dart';
 import '../../services/api_service.dart'; // Ensure this path is correct
 import '../../models/personal_event.dart'; // Ensure this path is correct
 
-// --- MODERN STYLE CONSTANTS (Define these in your schedule_constants.dart if possible) ---
+// --- MODERN STYLE CONSTANTS (Ensure these match your project's theme) ---
 const Color kPrimaryColor = Color.fromARGB(255, 46, 71, 59); // Dark Green
 const Color kAccentColor = Color(0xFFD97706); // Orange/Amber
 const double kBorderRadius = 12.0;
 
 // Dark Mode Colors
-// ✅ CHANGE: Updated kDarkModeBackground to a darker gray (e.g., #121212)
 const Color kDarkModeBackground = Color.fromARGB(
   255,
   18,
@@ -59,10 +60,7 @@ class _AddPersonalEventScreenState extends State<AddPersonalEventScreen> {
   late DateTime _startDate;
   late TimeOfDay _startTime;
   DateTime? _endDate;
-  // 🐛 FIX: Removed 'late'. Since it's nullable and may not be initialized
-  // for a new event in initState, 'late' causes the LateInitializationError
-  // when the field is accessed (e.g., inside the button's onPressed).
-  TimeOfDay? _endTime;
+  TimeOfDay? _endTime; // Nullable for optional end time
 
   // --- Dropdown State ---
   String? _eventType;
@@ -93,6 +91,8 @@ class _AddPersonalEventScreenState extends State<AddPersonalEventScreen> {
       _startDate = event.startDate;
       _startTime = TimeOfDay.fromDateTime(event.startDate);
 
+      _eventType = event.eventType; // Initialize event type
+
       _endDate = event.endDate;
       _endTime = event.endDate != null
           ? TimeOfDay.fromDateTime(event.endDate!)
@@ -101,7 +101,7 @@ class _AddPersonalEventScreenState extends State<AddPersonalEventScreen> {
       // Initialize state for CREATION
       _startDate = DateTime.now();
       _startTime = TimeOfDay.now();
-      // NOTE: _endDate and _endTime are correctly null here as they are TimeOfDay? and TimeOfDay? respectively.
+      // NOTE: _endDate, _endTime, and _eventType remain null
     }
   }
 
@@ -111,6 +111,11 @@ class _AddPersonalEventScreenState extends State<AddPersonalEventScreen> {
     _descriptionController.dispose();
     _locationController.dispose();
     super.dispose();
+  }
+
+  // Helper function to safely apply opacity using withAlpha
+  Color _applyOpacity(Color color, double opacity) {
+    return color.withAlpha((255 * opacity).round());
   }
 
   // --- Date & Time Pickers ---
@@ -153,8 +158,6 @@ class _AddPersonalEventScreenState extends State<AddPersonalEventScreen> {
                     ), // Dialog background color
                     onSurface: Colors.white, // Body text color
                   ),
-                  // ❌ REMOVED: Removed the problematic dialogTheme override.
-                  // Relying on colorScheme.surface for dialog background.
                 )
               : ThemeData.light().copyWith(
                   colorScheme: const ColorScheme.light(
@@ -163,8 +166,6 @@ class _AddPersonalEventScreenState extends State<AddPersonalEventScreen> {
                     surface: Colors.white, // Dialog background color
                     onSurface: Colors.black, // Body text color
                   ),
-                  // ❌ REMOVED: Removed the problematic dialogTheme override.
-                  // Relying on colorScheme.surface for dialog background.
                 ),
           child: child!,
         );
@@ -212,8 +213,6 @@ class _AddPersonalEventScreenState extends State<AddPersonalEventScreen> {
                     ), // Clock face and dialog background
                     onSurface: Colors.white,
                   ),
-                  // ❌ REMOVED: Removed the problematic dialogTheme override.
-                  // Relying on colorScheme.surface for dialog background.
                 )
               : ThemeData.light().copyWith(
                   colorScheme: const ColorScheme.light(
@@ -223,8 +222,6 @@ class _AddPersonalEventScreenState extends State<AddPersonalEventScreen> {
                     surface: Colors.white, // Clock face and dialog background
                     onSurface: Colors.black,
                   ),
-                  // ❌ REMOVED: Removed the problematic dialogTheme override.
-                  // Relying on colorScheme.surface for dialog background.
                 ),
           child: child!,
         );
@@ -242,7 +239,7 @@ class _AddPersonalEventScreenState extends State<AddPersonalEventScreen> {
     }
   }
 
-  // --- Form Submission Logic (Unchanged) ---
+  // --- Form Submission Logic ---
 
   DateTime _combineDateTime(DateTime date, TimeOfDay time) {
     return DateTime(date.year, date.month, date.day, time.hour, time.minute);
@@ -279,17 +276,32 @@ class _AddPersonalEventScreenState extends State<AddPersonalEventScreen> {
     try {
       final String startDateIso = startDateTime.toIso8601String();
       final String? endDateIso = endDateTime?.toIso8601String();
+      // NOTE: Provider.of is typically used within a StatelessWidget or inheritedWidget.
+      // Assuming ApiService is provided at the root of the app.
       final apiService = Provider.of<ApiService>(context, listen: false);
 
       if (_isEditing) {
+        // 🎯 CRUCIAL FIX: Safely retrieve and validate the ID for update payload.
         final eventId = widget.eventToEdit!.id;
 
         if (eventId == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Update failed: Event ID is missing from the object.',
+                ),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
           throw Exception('Cannot update event: Event ID is missing.');
         }
 
         final updatedEvent = PersonalEvent(
-          id: eventId,
+          // Cast ID to int as it's assumed to be the database PK type
+          // ignore: unnecessary_cast
+          id: eventId as int,
           eventName: _eventNameController.text.trim(),
           description: _descriptionController.text.trim().isEmpty
               ? null
@@ -371,22 +383,14 @@ class _AddPersonalEventScreenState extends State<AddPersonalEventScreen> {
     final Color focusedColor =
         kPrimaryColor; // Primary color remains the focus accent
 
-    // Helper function to safely apply opacity using withAlpha
-    // ignore: no_leading_underscores_for_local_identifiers
-    Color _applyOpacity(Color color, double opacity) {
-      return color.withAlpha((255 * opacity).round());
-    }
-
     return InputDecoration(
       labelText: labelText,
       hintText: hintText,
-      // ⚠️ FIX 2: Replaced kPrimaryColor.withOpacity(0.7) with a safe version
       prefixIcon: Icon(icon, color: _applyOpacity(kPrimaryColor, 0.7)),
       floatingLabelStyle: TextStyle(
         color: focusedColor,
         fontWeight: FontWeight.bold,
       ),
-      // ⚠️ FIX 2: Replaced textColor.withOpacity(0.5) with a safe version
       hintStyle: TextStyle(color: _applyOpacity(textColor, 0.5)),
       labelStyle: TextStyle(color: _applyOpacity(textColor, 0.8)),
       border: OutlineInputBorder(
@@ -557,9 +561,7 @@ class _AddPersonalEventScreenState extends State<AddPersonalEventScreen> {
                   context,
                   'End Date/Time (Optional)',
                   _endDate!,
-                  // When _endDate is set, _endTime is guaranteed to be non-null
-                  // either by init state or the button logic below, but we use
-                  // the null coalescing just in case of an unexpected state.
+                  // When _endDate is set, _endTime should be non-null
                   _endTime ?? const TimeOfDay(hour: 23, minute: 59),
                   false, // isStartDate
                 ),
@@ -573,7 +575,6 @@ class _AddPersonalEventScreenState extends State<AddPersonalEventScreen> {
                     if (_endDate == null) {
                       _endDate = _startDate;
                       // When adding the end date, explicitly initialize _endTime
-                      // if it's currently null (which it will be for new events).
                       _endTime =
                           _endTime ?? const TimeOfDay(hour: 23, minute: 59);
                     } else {

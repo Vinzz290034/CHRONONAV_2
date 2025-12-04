@@ -6,7 +6,7 @@ import 'schedule_screen.dart';
 import 'direction_screen.dart';
 import 'notification_screen.dart';
 import 'announcement_screen.dart';
-import '../screens/edit_schedule_entry_screen.dart';
+// REMOVED: unused import '../screens/edit_schedule_entry_screen.dart';
 import '../models/schedule_entry.dart'; // Import the specific model
 import '../services/api_service.dart'; // REQUIRED IMPORT for fetching data
 import 'add_pdf_screen.dart';
@@ -261,7 +261,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }).toList();
   }
 
-  // 🚀 HANDLER for when a single entry is edited and saved (from EditScreen)
+  // REMOVED: Unused function _handleEntryUpdate (Problem 2 fix)
+  /*
   void _handleEntryUpdate(ScheduleEntry updatedEntry) {
     final currentCourses = _getUpcomingClasses();
 
@@ -284,6 +285,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     }
   }
+  */
 
   // 3. ❌ NEW: Delete Handler - Performs API call and updates local state
   Future<void> _deleteScheduleEntry(ScheduleEntry entry) async {
@@ -348,136 +350,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return (_scheduleData['courses'] as List?)?.cast<ScheduleEntry>() ?? [];
   }
 
-  // Helper Widget for Upcoming Class Tiles (Modified to accept ScheduleEntry)
-  Widget _buildClassTile({
-    required BuildContext context,
-    required ScheduleEntry data,
-  }) {
-    final Color primaryColor = Theme.of(context).colorScheme.primary;
-    final Color textColor = Theme.of(context).textTheme.bodyMedium!.color!;
-    final Color cardColor = Theme.of(context).cardColor;
-
-    final String title = '${data.scheduleCode}: ${data.title}';
-
-    final String details =
-        '${data.dayOfWeek ?? 'N/A'} | Time: ${data.startTime} | Room: ${data.room ?? 'N/A'} | Starts: ${data.startDate}';
-
-    const String imageAsset = 'assets/images/default_class.png';
-
-    return Column(
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                      color: textColor,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    details,
-                    style: TextStyle(color: Theme.of(context).hintColor),
-                  ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: 35,
-                    child: Row(
-                      // <-- Row added to contain both buttons
-                      children: [
-                        // View / Edit Button
-                        OutlinedButton(
-                          onPressed: () async {
-                            final updatedEntry = await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    EditScheduleEntryScreen(entry: data),
-                              ),
-                            );
-
-                            if (updatedEntry is ScheduleEntry) {
-                              _handleEntryUpdate(updatedEntry);
-                            }
-                          },
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            side: BorderSide(
-                              color: Theme.of(context).dividerColor,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          child: Text(
-                            'View / Edit',
-                            style: TextStyle(color: primaryColor),
-                          ),
-                        ),
-
-                        const SizedBox(width: 8), // Spacer
-                        // ❌ MODIFIED: Delete Text Button
-                        TextButton(
-                          onPressed: () => _confirmDeletion(data),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                            ), // Reduced padding for compactness
-                            minimumSize: Size.zero, // Minimal size constraint
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            textStyle: const TextStyle(fontSize: 14),
-                            foregroundColor:
-                                Colors.red.shade600, // Explicit red color
-                          ),
-                          child: const Text('Delete'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                color: cardColor,
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Image.asset(
-                  imageAsset,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      color: Theme.of(context).dividerColor,
-                      child: Center(
-                        child: Icon(
-                          Icons.class_sharp,
-                          color: Theme.of(context).hintColor,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 15),
-      ],
-    );
-  }
-
   // 4. 🗑️ NEW: Confirmation Dialog
   Future<void> _confirmDeletion(ScheduleEntry entry) async {
     final shouldDelete = await showDialog<bool>(
@@ -506,6 +378,153 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (shouldDelete == true) {
       await _deleteScheduleEntry(entry);
     }
+  }
+
+  // 🎯 NEW: Modal Content Helper (Read-Only Detail View)
+  Widget _buildScheduleDetailModalContent(
+    BuildContext context,
+    ScheduleEntry data,
+  ) {
+    final Color primaryColor = Theme.of(context).colorScheme.primary;
+    final Color textColor = Theme.of(context).textTheme.bodyMedium!.color!;
+    final Color hintColor = Theme.of(context).hintColor;
+    const int alpha60 = 153; // 60% opacity for text/icons
+
+    // Helper to build a clean detail row
+    Widget buildDetailRow(IconData icon, String label, String value) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 20, color: primaryColor.withAlpha(alpha60)),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: hintColor,
+                  ),
+                ),
+                Text(
+                  value.isEmpty ? 'N/A' : value,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: textColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Determine Time Range
+    final String timeRange = data.endTime?.isNotEmpty == true
+        ? '${data.startTime} - ${data.endTime}'
+        : data.startTime;
+
+    return Padding(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header
+          Text(
+            '${data.scheduleCode} Details',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: primaryColor,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            data.title,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: textColor,
+            ),
+          ),
+          const Divider(height: 30),
+
+          // Details Section
+          buildDetailRow(Icons.access_time_rounded, 'Time', timeRange),
+          buildDetailRow(
+            Icons.calendar_month_outlined,
+            'Days of Week',
+            data.dayOfWeek ?? 'N/A',
+          ),
+          buildDetailRow(Icons.pin_drop, 'Room / Location', data.room ?? 'N/A'),
+          buildDetailRow(
+            Icons.school_outlined,
+            'Schedule Type',
+            data.scheduleType,
+          ),
+          buildDetailRow(Icons.date_range, 'Start Date', data.startDate),
+
+          // Optional Description
+          if (data.description?.isNotEmpty == true) ...[
+            const Divider(height: 20),
+            buildDetailRow(
+              Icons.notes_rounded,
+              'Description',
+              data.description!,
+            ),
+          ],
+
+          const SizedBox(height: 30),
+
+          // Close button
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                side: BorderSide(color: primaryColor),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: Text(
+                'Close',
+                style: TextStyle(color: primaryColor, fontSize: 16),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 🎯 NEW: Function to display the modal
+  void _showScheduleDetailModal(ScheduleEntry data) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25.0)),
+      ),
+      builder: (context) {
+        return SingleChildScrollView(
+          child: Container(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: _buildScheduleDetailModalContent(context, data),
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildSummaryCard(BuildContext context) {
@@ -571,6 +590,120 @@ class _DashboardScreenState extends State<DashboardScreen> {
           label,
           style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor),
         ),
+      ],
+    );
+  }
+
+  // Helper Widget for Upcoming Class Tiles (MODIFIED to use Modal)
+  Widget _buildClassTile({
+    required BuildContext context,
+    required ScheduleEntry data,
+  }) {
+    final Color primaryColor = Theme.of(context).colorScheme.primary;
+    final Color textColor = Theme.of(context).textTheme.bodyMedium!.color!;
+    final Color cardColor = Theme.of(context).cardColor;
+
+    final String title = '${data.scheduleCode}: ${data.title}';
+
+    final String details =
+        '${data.dayOfWeek ?? 'N/A'} | Time: ${data.startTime} | Room: ${data.room ?? 'N/A'} | Starts: ${data.startDate}';
+
+    const String imageAsset = 'assets/images/default_class.png';
+
+    return Column(
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                      color: textColor,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    details,
+                    style: TextStyle(color: Theme.of(context).hintColor),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 35,
+                    child: Row(
+                      children: [
+                        // 🎯 MODIFIED: "View" button now opens the modal
+                        OutlinedButton(
+                          onPressed: () => _showScheduleDetailModal(data),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            side: BorderSide(
+                              color: Theme.of(context).dividerColor,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: Text(
+                            'View',
+                            style: TextStyle(color: primaryColor),
+                          ),
+                        ),
+
+                        const SizedBox(width: 8), // Spacer
+                        // ❌ Delete Text Button (Remains the same)
+                        TextButton(
+                          onPressed: () => _confirmDeletion(data),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            textStyle: const TextStyle(fontSize: 14),
+                            foregroundColor: Colors.red.shade600,
+                          ),
+                          child: const Text('Delete'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                color: cardColor,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.asset(
+                  imageAsset,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      color: Theme.of(context).dividerColor,
+                      child: Center(
+                        child: Icon(
+                          Icons.class_sharp,
+                          color: Theme.of(context).hintColor,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 15),
       ],
     );
   }
@@ -741,7 +874,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 15),
+                const SizedBox(height: 8),
                 Text(
                   'Add Study Load',
                   style: TextStyle(
@@ -820,7 +953,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20.0),
             child: Text(
-              'Upcoming Classes',
+              'Class Schedule Manager',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
