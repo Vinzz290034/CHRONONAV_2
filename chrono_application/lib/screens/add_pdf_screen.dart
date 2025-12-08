@@ -283,9 +283,9 @@ class _AddPdfScreenState extends State<AddPdfScreen> {
         caseSensitive: false,
       );
       final RegExp roomPattern = RegExp(
-        r'\d{3,}',
+        r'^\d+[A-Z]?$|^[A-Z]?\d+$',
         caseSensitive: false,
-      ); // Match 3+ digits for room
+      ); // Match room formats: "536", "B201", "201B", etc.
 
       // --- Phase 1: Vertical Column Collection ---
       for (var line in lines) {
@@ -307,11 +307,12 @@ class _AddPdfScreenState extends State<AddPdfScreen> {
         } else if (upperLine.contains('TIME')) {
           currentState = 'TIME';
           continue;
+        } else if (upperLine.contains('ROOM')) {
+          // Check for ROOM header BEFORE DAYS because sometimes we see "DAYS ROOM" on same line
+          currentState = 'ROOM';
+          continue;
         } else if (upperLine.contains('DAYS')) {
           currentState = 'DAYS';
-          continue;
-        } else if (upperLine.contains('ROOM')) {
-          currentState = 'ROOM';
           continue;
         } else if (upperLine.contains('SCHED. NO.')) {
           // Ignore schedule numbers, they confuse the course list
@@ -336,14 +337,19 @@ class _AddPdfScreenState extends State<AddPdfScreen> {
             }
             break;
           case 'DAYS':
-            // Days are simple: M, MW, FRI, TTH, etc.
-            if (line.length <= 3) {
+            // Days are letter patterns: M, MW, FRI, TTH, M-S, MWF, etc.
+            // Must start with a letter and be <= 5 chars, NOT all digits
+            if (line.length <= 5 &&
+                line.contains(RegExp(r'^[A-Za-z]', multiLine: true)) &&
+                !RegExp(r'^\d+$').hasMatch(line)) {
               days.add(line);
             }
             break;
           case 'ROOM':
-            // Rooms are digits (like '536') or short codes.
-            if (roomPattern.hasMatch(line) || line.length <= 4) {
+            // Rooms are digits (like '536', '201B', 'B201') or short alphanumeric codes.
+            // Accept if it matches the room pattern OR is a short string (<=6 chars) that contains at least one digit
+            if (roomPattern.hasMatch(line) ||
+                (line.length <= 6 && line.contains(RegExp(r'\d')))) {
               rooms.add(line);
             }
             break;
@@ -352,6 +358,13 @@ class _AddPdfScreenState extends State<AddPdfScreen> {
             break;
         }
       }
+
+      // Debug: Print collected columns after extraction
+      debugPrint('Extracted columns:');
+      debugPrint('Course Codes: $courseCodes');
+      debugPrint('Times: $times');
+      debugPrint('Days: $days');
+      debugPrint('Rooms: $rooms');
 
       // --- Phase 2: Horizontal Row Assembly ---
       final int entryCount = courseCodes.length;

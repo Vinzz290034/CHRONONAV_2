@@ -246,6 +246,16 @@ class _AuthWrapperState extends State<AuthWrapper> {
     _navigateToScreen(PrivacyScreen(onBackToSettings: _onPop()));
   }
 
+  void _viewCalendarEventsScreen() {
+    setState(() {
+      // 🎯 FIX: Change the application state back to the Dashboard/Schedule view.
+      _authState = AuthState.dashboard;
+    });
+
+    // OPTIONAL: Add debug print for confirmation
+    debugPrint('View Calendar Events tapped. Navigating to Dashboard state.');
+  }
+
   // Use the navigation methods directly for the ProfileScreen callbacks
   void _navigateToChangePassword() {
     final userEmail = _currentUserData?['email'] ?? 'default@example.com';
@@ -277,6 +287,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
         onDeactivateAccountTap: _navigateToDeactivateAccount,
         // 🟢 FIXED: Add the required 'onClearCachedDataTap' argument
         onClearCachedDataTap: _handleClearCachedData,
+        onViewCalendarEventsTap:
+            _viewCalendarEventsScreen, // Correctly references the state-changing handler
       ),
     );
   }

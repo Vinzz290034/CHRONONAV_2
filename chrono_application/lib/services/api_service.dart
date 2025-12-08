@@ -8,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/announcement.dart';
 import '../models/ticket.dart';
 import '../models/personal_event.dart';
+import '../models/calendar_event.dart';
 // 🎯 NEW REQUIRED IMPORT
 import '../models/schedule_entry.dart';
 
@@ -519,6 +520,22 @@ class ApiService {
         responseBody['list'] as List<dynamic>? ?? [];
 
     return eventList.map((json) => PersonalEvent.fromJson(json)).toList();
+  }
+
+  /// Fetches calendar events for the authenticated user.
+  /// Returns a list of CalendarEvent objects from the calendar_events table.
+  Future<List<CalendarEvent>> fetchCalendarEvents() async {
+    final responseBody = await _sendAuthenticatedRequest(
+      'events/calendar',
+      'GET',
+      failureMessage: 'Failed to fetch calendar events. Check token status.',
+    );
+
+    // The server returns a List of calendar events
+    final List<dynamic> eventList =
+        responseBody['list'] as List<dynamic>? ?? [];
+
+    return eventList.map((json) => CalendarEvent.fromJson(json)).toList();
   }
 
   // --- Profile Management ---

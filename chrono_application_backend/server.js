@@ -1111,6 +1111,59 @@ app.delete('/api/events/personal/:id', verifyToken, async (req, res) => {
         return handleServerError(res, error, 'Error deleting personal event');
     }
 });
+
+// ------------------------------------------------------------------------------
+// 🚀 NEW: CALENDAR EVENTS ROUTES (calendar_events table)
+// ------------------------------------------------------------------------------
+
+/**
+ * Helper function to map calendar_events data structure from DB to a clean JSON response.
+ * @param {object} event - The raw database row.
+ */
+const formatCalendarEvent = (event) => ({
+    id: event.id,
+    userId: event.user_id,
+    eventName: event.event_name,
+    description: event.description,
+    startDate: event.start_date ? new Date(event.start_date).toISOString() : null, // Convert datetime to ISO string
+    endDate: event.end_date ? new Date(event.end_date).toISOString() : null, // Convert datetime to ISO string
+    location: event.location,
+    eventType: event.event_type,
+    createdAt: event.created_at ? new Date(event.created_at).toISOString() : null,
+    updatedAt: event.updated_at ? new Date(event.updated_at).toISOString() : null,
+});
+
+
+// GET /api/events/calendar: Fetch all calendar events for the authenticated user
+app.get('/api/events/calendar', verifyToken, async (req, res) => {
+    // Get the authenticated user ID from the JWT token
+    const userId = req.user.id;
+
+    try {
+        const query = `
+            SELECT *
+            FROM calendar_events
+            WHERE user_id = ?
+            ORDER BY start_date ASC, start_time ASC
+        `;
+        
+        // 1. Execute query, filtering by user_id
+        const [events] = await pool.query(query.trim(), [userId]); 
+
+        // 2. Format the output to match the client model structure
+        const formattedEvents = events.map(formatCalendarEvent);
+
+        res.status(200).json({
+            success: true,
+            message: `Fetched ${formattedEvents.length} calendar events.`,
+            list: formattedEvents // Matches the client's expectation: responseBody['list']
+        });
+
+    } catch (error) {
+        return handleServerError(res, error, 'Error fetching calendar events');
+    }
+});
+
 // ------------------------------------------------------------------------------
 // 6. START SERVER
 // ------------------------------------------------------------------------------

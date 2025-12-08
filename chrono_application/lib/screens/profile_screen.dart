@@ -3,22 +3,17 @@ import 'dart:io';
 import '../widgets/profile_avatar.dart';
 import 'edit_profile_screen.dart';
 import 'feedback_screen.dart';
-import 'help_center_screen.dart'; // Import the HelpCenterScreen
+import 'help_center_screen.dart';
+// NOTE: Removed 'import 'view_calendar_event_screen.dart';' to fix the error.
 
 class ProfileScreen extends StatefulWidget {
-  // Initial data passed from MainAppWrapper
   final Map<String, dynamic> userData;
   final VoidCallback onBackToSettings;
-
-  // Function to send updated user data back to the parent
   final ValueChanged<Map<String, dynamic>> onUpdateUserData;
-
-  // Handlers for security/data actions (required by main.dart)
   final VoidCallback onChangePasswordTap;
   final VoidCallback onDeactivateAccountTap;
-
-  // 🟢 RE-ADDED: This is commonly managed by the AuthWrapper/MainApp.
   final VoidCallback onClearCachedDataTap;
+  final VoidCallback onViewCalendarEventsTap; // Required callback
 
   const ProfileScreen({
     super.key,
@@ -27,8 +22,8 @@ class ProfileScreen extends StatefulWidget {
     required this.onUpdateUserData,
     required this.onChangePasswordTap,
     required this.onDeactivateAccountTap,
-    // 🟢 RE-ADDED: Initialize the new parameter
     required this.onClearCachedDataTap,
+    required this.onViewCalendarEventsTap,
   });
 
   @override
@@ -36,9 +31,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  // Brand Color (ChronoNav green)
   final Color chrononaPrimaryColor = const Color(0xFF007A5A);
-  // Define a subtle background color for containers
   final Color _cardBackgroundColor = Colors.white;
 
   late Map<String, dynamic> _currentUserData;
@@ -50,7 +43,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _correctProfilePhotoUrl();
   }
 
-  // Handles the correction of the profile photo URL based on the platform.
   void _correctProfilePhotoUrl() {
     String? photoUrl = _currentUserData['photo_url'];
 
@@ -60,7 +52,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             .replaceAll('localhost', '10.0.2.2')
             .replaceAll('127.0.0.1', '10.0.2.2');
 
-        // Update the internal map state
         setState(() {
           _currentUserData = Map.from(_currentUserData);
           _currentUserData['photo_url'] = correctedUrl;
@@ -69,7 +60,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // Navigate to EditProfileScreen and handle the result
   void _navigateToEditProfile() async {
     final updatedData = await Navigator.push(
       context,
@@ -87,7 +77,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // NEW: Navigate to HelpCenterScreen (Internal navigation)
   void _navigateToHelpCenterScreen() {
     Navigator.push(
       context,
@@ -95,7 +84,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Navigate to FeedbackScreen (Internal navigation)
   void _navigateToFeedbackScreen() {
     Navigator.push(
       context,
@@ -103,9 +91,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // --- Helper Widgets for Modern Look ---
+  // CORRECT: This simply calls the required external callback.
+  void _viewCalendarEventScreen() {
+    widget.onViewCalendarEventsTap();
+  }
 
-  /// A modern Card container to group related items (Profile Details, Security, Support).
+  // --- Helper Widgets ---
+
   Widget _buildSectionCard(
     BuildContext context, {
     required String title,
@@ -130,7 +122,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: chrononaPrimaryColor, // Highlight section title
+                color: chrononaPrimaryColor,
               ),
             ),
             const Divider(height: 20, thickness: 1.0),
@@ -141,7 +133,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  /// Displays a single, non-actionable piece of information within the Card.
   Widget _buildInfoItem(
     BuildContext context,
     String label,
@@ -185,14 +176,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  /// Builds an actionable item (used for Security & Support sections).
   Widget _buildActionItem(
     BuildContext context, {
     required String title,
-    required IconData icon, // New: Leading icon for modern look
+    required IconData icon,
     required VoidCallback onTap,
     bool showDivider = true,
-    Color? titleColorOverride, // Optional color override for special actions
+    Color? titleColorOverride,
   }) {
     final Color dividerColor = Theme.of(context).dividerColor.withAlpha(50);
     final Color titleColor =
@@ -205,7 +195,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       children: [
         ListTile(
           contentPadding: EdgeInsets.zero,
-          leading: Icon(icon, color: iconColor, size: 24), // Modern icon
+          leading: Icon(icon, color: iconColor, size: 24),
           title: Text(title, style: TextStyle(fontSize: 16, color: titleColor)),
           trailing: Icon(
             Icons.arrow_forward_ios,
@@ -216,16 +206,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         if (showDivider)
           Padding(
-            padding: const EdgeInsets.only(
-              left: 40.0,
-            ), // Align divider with text
+            padding: const EdgeInsets.only(left: 40.0),
             child: Divider(height: 0, thickness: 0.5, color: dividerColor),
           ),
       ],
     );
   }
 
-  /// Builds the top header with the avatar and greeting.
   Widget _buildHeader(
     BuildContext context,
     String fullName,
@@ -276,7 +263,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       backgroundColor: isDarkTheme
           ? Theme.of(context).scaffoldBackgroundColor
-          : Colors.grey[50], // Add a subtle light background
+          : Colors.grey[50],
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios),
@@ -317,7 +304,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   context,
                   'Course/Program',
                   courseProgram,
-                  showDivider: false, // Last item in the card
+                  showDivider: false,
                 ),
               ],
             ),
@@ -336,7 +323,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onTap: widget.onChangePasswordTap,
                 ),
 
-                // 🟢 NEW ITEM: Clear Cached Data
+                // 2. Clear Cached Data
                 _buildActionItem(
                   context,
                   icon: Icons.cleaning_services_outlined,
@@ -344,7 +331,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onTap: widget.onClearCachedDataTap,
                 ),
 
-                // 2. Deactivate Account (Highlighted with error color)
+                // 3. Deactivate Account
                 _buildActionItem(
                   context,
                   icon: Icons.person_off_outlined,
@@ -362,6 +349,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               context,
               title: 'Support',
               children: [
+                // 🎯 ADDED: View Calendar Events Button
+                _buildActionItem(
+                  context,
+                  icon: Icons.event_note_outlined,
+                  title: 'View Calendar Events',
+                  onTap: _viewCalendarEventScreen, // Calls the internal handler
+                ),
+
                 // 1. Help & Support
                 _buildActionItem(
                   context,
