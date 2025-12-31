@@ -4,8 +4,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
 // --- SERVICE/MODEL IMPORTS ---
-// Must be provided in the project structure
 import 'services/api_service.dart';
+// FIX 1: Import the LocationProvider
+import 'providers/location_provider.dart';
 
 // --- Screen Imports ---
 import 'screens/login_screen.dart';
@@ -18,6 +19,9 @@ import 'screens/registration_screen.dart'; // Assuming this is MinimalistRegistr
 import 'screens/deactivate_account_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/help_center_screen.dart'; // Import for the new screen
+import 'screens/calendar_event_screen.dart';
+import 'screens/clear_cache_screen.dart'; //
+import 'providers/schedule_provider.dart';
 
 void main() {
   // Ensure Flutter is initialized before accessing SharedPreferences
@@ -27,11 +31,12 @@ void main() {
   runApp(
     MultiProvider(
       providers: [
-        // 🟢 Provider Injection: Makes the ApiService available to all child widgets
-        Provider<ApiService>(
-          // Creates a singleton instance of the service
-          create: (_) => ApiService(),
-        ),
+        // 🟢 Existing Provider: ApiService
+        Provider<ApiService>(create: (_) => ApiService()),
+        // FIX 2: Inject the LocationProvider as a ChangeNotifierProvider
+        ChangeNotifierProvider(create: (_) => LocationProvider()),
+        // 🎯 NEW: Inject the ScheduleProvider
+        ChangeNotifierProvider(create: (_) => ScheduleProvider()),
       ],
       child: const ChronoNavApp(),
     ),
@@ -247,13 +252,16 @@ class _AuthWrapperState extends State<AuthWrapper> {
   }
 
   void _viewCalendarEventsScreen() {
-    setState(() {
-      // 🎯 FIX: Change the application state back to the Dashboard/Schedule view.
-      _authState = AuthState.dashboard;
-    });
+    // We already popped the ProfileScreen in profile_screen.dart,
+    // so here we just push the new screen onto the stack.
 
-    // OPTIONAL: Add debug print for confirmation
-    debugPrint('View Calendar Events tapped. Navigating to Dashboard state.');
+    // NOTE: If you haven't fixed profile_screen.dart yet, modify the line below
+    // to pop before navigating to avoid a stacked navigation history:
+    // Navigator.of(context).pop(); // <--- UNCOMMENT THIS IF NEEDED
+
+    _navigateToScreen(const CalendarEventScreen());
+
+    debugPrint('Navigating to Calendar Event Screen.');
   }
 
   // Use the navigation methods directly for the ProfileScreen callbacks
@@ -285,10 +293,24 @@ class _AuthWrapperState extends State<AuthWrapper> {
         onUpdateUserData: _updateUserProfileData,
         onChangePasswordTap: _navigateToChangePassword,
         onDeactivateAccountTap: _navigateToDeactivateAccount,
-        // 🟢 FIXED: Add the required 'onClearCachedDataTap' argument
-        onClearCachedDataTap: _handleClearCachedData,
+
+        // 🎯 THIS IS WHERE YOU PUT THE CODE BLOCK:
+        onClearCachedDataTap: () {
+          // 1. Dismiss the ProfileScreen before pushing the confirmation screen.
+          Navigator.of(context).pop();
+          // 2. Push the ClearCacheScreen, passing the final action logic.
+          _navigateToScreen(
+            ClearCacheScreen(
+              onClearSuccess: () {
+                // Executes final cleanup and logout logic
+                _showLogin();
+              },
+            ),
+          );
+        },
+
         onViewCalendarEventsTap:
-            _viewCalendarEventsScreen, // Correctly references the state-changing handler
+            _viewCalendarEventsScreen, // Navigation for Calendar Events
       ),
     );
   }
@@ -334,7 +356,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
       currentThemeMode: widget.currentThemeMode,
       onToggleDarkMode: widget.toggleTheme,
       // 🟢 Added the callback to support navigation to HelpCenterScreen from Settings
-      //onHelpSupportTap: _handleHelpSupport,
+      // NOTE: Assuming SettingsScreen requires this, even though it's commented out in your original code
+      // onHelpSupportTap: _handleHelpSupport,
     );
   }
 
