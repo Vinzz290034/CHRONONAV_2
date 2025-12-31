@@ -1,14 +1,18 @@
+// lib/models/calendar_event.dart
+// ignore: unused_import
+import 'package:flutter/material.dart'; // Used for MaterialPageRoute context in some screens
+
 class CalendarEvent {
   final int id;
   final int userId;
   final String eventName;
   final String? description;
   final DateTime startDate;
-  final DateTime endDate;
+  final DateTime? endDate; // FIX: Made nullable
   final String? location;
   final String? eventType;
-  final DateTime createdAt;
-  final DateTime? updatedAt;
+  final DateTime? createdAt; // FIX: Made nullable
+  final DateTime? updatedAt; // FIX: Made nullable
 
   CalendarEvent({
     required this.id,
@@ -16,51 +20,54 @@ class CalendarEvent {
     required this.eventName,
     this.description,
     required this.startDate,
-    required this.endDate,
+    this.endDate, // FIX: Removed required
     this.location,
     this.eventType,
-    required this.createdAt,
-    this.updatedAt,
+    this.createdAt, // FIX: Removed required
+    this.updatedAt, // FIX: Removed required
   });
 
   /// Factory constructor for JSON deserialization
-
+  /// FIX: Uses camelCase keys from server's formatCalendarEvent helper.
   factory CalendarEvent.fromJson(Map<String, dynamic> json) {
     return CalendarEvent(
       id: json['id'] as int,
-      userId: json['user_id'] as int,
-      eventName: json['event_name'] as String,
+      userId: json['userId'] as int,
+      eventName: json['eventName'] as String,
       description: json['description'] as String?,
-      startDate: DateTime.parse(json['start_date'] as String),
-      endDate: DateTime.parse(json['end_date'] as String),
+      // NOTE: startDate must be non-null in the DB/Model
+      startDate: DateTime.parse(json['startDate'] as String),
+      endDate: json['endDate'] != null
+          ? DateTime.parse(json['endDate'] as String)
+          : null,
       location: json['location'] as String?,
-      eventType: json['event_type'] as String?,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'] as String)
+      eventType: json['eventType'] as String?,
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'] as String)
+          : null,
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'] as String)
           : null,
     );
   }
 
-  /// Convert to JSON for sending to server
-
+  /// Convert to JSON for sending to server (POST/PUT payload)
+  /// Uses camelCase keys, which the Node.js server maps to snake_case DB columns.
   Map<String, dynamic> toJson() {
+    // Only send mutable fields to the server
     return {
-      'id': id,
-      'user_id': userId,
-      'event_name': eventName,
+      'eventName': eventName,
       'description': description,
-      'start_date': startDate.toIso8601String(),
-      'end_date': endDate.toIso8601String(),
+      // DateTimes are converted to ISO string format, which the server expects.
+      'startDate': startDate.toIso8601String(),
+      'endDate': endDate?.toIso8601String(),
       'location': location,
-      'event_type': eventType,
-      'created_at': createdAt.toIso8601String(),
-      'updated_at': updatedAt?.toIso8601String(),
+      'eventType': eventType,
+      // Note: id, userId, createdAt, updatedAt are handled by the server/URL
     };
   }
 
-  /// Create a copy with modified fields
-
+  /// FIX: Added copyWith method to resolve "undefined method" error.
   CalendarEvent copyWith({
     int? id,
     int? userId,
