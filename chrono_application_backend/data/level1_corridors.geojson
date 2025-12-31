@@ -1,0 +1,18 @@
+{
+"type": "FeatureCollection",
+"name": "level1_corridors",
+"features": [
+    {
+        "type": "Feature",
+        "properties": { "id": 101, "name": "Corridor A" },
+        "geometry": {
+            "type": "LineString",
+            "coordinates": [
+                [ 13.456, 52.518 ],  
+                [ 13.456, 52.519 ],
+                [ 13.457, 52.519 ]
+            ]
+        }
+    }
+]
+}

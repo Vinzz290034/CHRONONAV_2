@@ -1,0 +1,14 @@
+{
+"type": "FeatureCollection",
+"name": "level1_rooms_poi",
+"features": [
+    {
+        "type": "Feature",
+        "properties": { "id": "R101", "name": "Room A-101", "floorID": "level1" },
+        "geometry": {
+            "type": "Point",
+            "coordinates": [ 13.457, 52.519 ] 
+        }
+    }
+]
+}

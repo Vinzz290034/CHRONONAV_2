@@ -13,9 +13,17 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs'); 
 
+const bodyParser = require('body-parser');
+const http = require('http');
+const WebSocket = require('ws');
+
 const app = express(); // Main Express application instance
-const PORT = 3000;
+const HTTP_PORT = 3001;
+//const PORT = 3000;
 const JWT_SECRET = 'YOUR_SUPER_SECURE_SECRET_KEY_12345'; 
+
+// A. Connect the NavigationGraph service (This is how server.js accesses the data and logic)
+const NavigationGraph = require('./services/NavigationGraph');
 
 // ------------------------------------------------------------------------------
 // 2. UTILITY FUNCTIONS
@@ -23,7 +31,7 @@ const JWT_SECRET = 'YOUR_SUPER_SECURE_SECRET_KEY_12345';
 
 /**
  * Utility function to get the base INSERT query for the add_pdf table
- * 🎯 UPDATED: Changed 'location' to 'room' in the query columns.
+ * UPDATED: Changed 'location' to 'room' in the query columns.
  */
 const getScheduleInsertQuery = () => `
     INSERT INTO add_pdf
@@ -56,7 +64,7 @@ const extractScheduleValues = (entry, userId) => [
  */
 const extractSchedulesFromPdf = async (filePath) => {
     // Console log the starting point for tracking
-    console.log(`⏳ Starting schedule extraction for file: ${filePath}`);
+    console.log(`Starting schedule extraction for file: ${filePath}`);
     
     // --- Mock Extracted Data (Return actual extracted data here) ---
     return [
@@ -89,7 +97,7 @@ const extractSchedulesFromPdf = async (filePath) => {
  */
 const handleServerError = (res, error, message = 'Internal server error.') => {
     // CRITICAL: Log the actual error stack for debugging
-    console.error(`❌ ${message}`, error.stack || error); 
+    console.error(` ${message}`, error.stack || error); 
     res.status(500).json({ success: false, message: `Server error: ${message}`, error_detail: error.message });
 };
 
@@ -99,8 +107,8 @@ const handleServerError = (res, error, message = 'Internal server error.') => {
 const formatPhotoUrl = (dbPath) => {
     if (!dbPath) return null;
     const cleanPath = dbPath.replace(/\\/g, '/');
-    // NOTE: This assumes the client can reach localhost:3000. Use 10.0.2.2 for Android emulator.
-    return `http://localhost:${PORT}/${cleanPath}`; 
+    // NOTE: This now uses the globally defined HTTP_PORT
+    return `http://localhost:${HTTP_PORT}/${cleanPath}`; // <--- FIX IS HERE
 };
 
 /**
@@ -116,9 +124,9 @@ const deleteOldProfilePhoto = async (userId, connection) => {
 
             if (fs.existsSync(absolutePath)) {
                 fs.unlinkSync(absolutePath);
-                console.log(`✅ Deleted old profile photo: ${absolutePath}`);
+                console.log(` Deleted old profile photo: ${absolutePath}`);
             } else {
-                console.log(`⚠️ Warning: Old profile photo path found in DB, but file does not exist: ${absolutePath}`);
+                console.log(`Warning: Old profile photo path found in DB, but file does not exist: ${absolutePath}`);
             }
         }
     } catch (error) {
@@ -134,7 +142,7 @@ const pool = mysql.createPool({
     host: 'localhost',
     user: 'root',
     password: '', 
-    database: 'chrononav_web_doss',
+    database: 'chrononav_web_doss1',
     waitForConnections: true,
     queueLimit: 0,
 });
@@ -143,10 +151,10 @@ const pool = mysql.createPool({
 (async () => {
     try {
         const connection = await pool.getConnection();
-        console.log(`✅ Connected to chrononav_web_doss as thread id ${connection.threadId}`);
+        console.log(`Connected to chrononav_web_doss as thread id ${connection.threadId}`);
         connection.release();
     } catch (err) {
-        console.error('❌ FATAL ERROR: Could not connect to database:', err.stack);
+        console.error('FATAL ERROR: Could not connect to database:', err.stack);
         // Process exit commented out for interactive environments but required for critical production servers
         // process.exit(1); 
     }
@@ -723,7 +731,7 @@ app.post('/api/upload/schedule_file', verifyToken, uploadSchedulePdf.single('sch
     const cleanupFile = () => {
         if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
-            console.log(`🗑️ Cleaned up temporary file: ${filePath}`);
+            console.log(`Cleaned up temporary file: ${filePath}`);
         }
     };
 
@@ -848,7 +856,7 @@ app.post('/api/schedules/bulk_save', verifyToken, async (req, res) => {
 
 // GET /api/schedules: Fetch All Uploaded Schedules for the current user
 app.get('/api/schedules', verifyToken, async (req, res) => {
-    // 🎯 CRITICAL FIX: Get the authenticated user ID
+    // CRITICAL FIX: Get the authenticated user ID
     const userId = req.user.id; 
 
     try {
@@ -1112,8 +1120,10 @@ app.delete('/api/events/personal/:id', verifyToken, async (req, res) => {
     }
 });
 
+//------------------------------------------------------------------------------
+
 // ------------------------------------------------------------------------------
-// 🚀 NEW: CALENDAR EVENTS ROUTES (calendar_events table)
+// NEW: CALENDAR EVENTS ROUTES (calendar_events table)
 // ------------------------------------------------------------------------------
 
 /**
@@ -1134,39 +1144,302 @@ const formatCalendarEvent = (event) => ({
 });
 
 
-// GET /api/events/calendar: Fetch all calendar events for the authenticated user
+// server.js (GET /api/events/calendar: Fetch all shared calendar events)
 app.get('/api/events/calendar', verifyToken, async (req, res) => {
-    // Get the authenticated user ID from the JWT token
-    const userId = req.user.id;
+    // NOTE: The 'userId' is still available from verifyToken, but we ignore it 
+    // to fetch shared events accessible by ALL authenticated users.
 
     try {
         const query = `
             SELECT *
             FROM calendar_events
-            WHERE user_id = ?
-            ORDER BY start_date ASC, start_time ASC
-        `;
+            ORDER BY start_date ASC
+        `; // FIX: Removed the "WHERE user_id = ?" filter.
         
-        // 1. Execute query, filtering by user_id
-        const [events] = await pool.query(query.trim(), [userId]); 
+        // 1. Execute query without parameters
+        const [events] = await pool.query(query.trim(), []); 
 
         // 2. Format the output to match the client model structure
         const formattedEvents = events.map(formatCalendarEvent);
 
         res.status(200).json({
             success: true,
-            message: `Fetched ${formattedEvents.length} calendar events.`,
+            message: `Fetched ${formattedEvents.length} shared calendar events.`,
             list: formattedEvents // Matches the client's expectation: responseBody['list']
         });
 
     } catch (error) {
-        return handleServerError(res, error, 'Error fetching calendar events');
+        return handleServerError(res, error, 'Error fetching shared calendar events');
+    }
+});
+
+
+// ----------------------------------------------------------------------
+// 1. POST /api/events/calendar: Create a new calendar event
+// ----------------------------------------------------------------------
+app.post('/api/events/calendar', verifyToken, async (req, res) => {
+    const userId = req.user.id; 
+    // Note: Client should use camelCase (e.g., eventName), 
+    // but the backend needs snake_case for the DB query.
+    const { eventName, description, startDate, endDate, location, eventType } = req.body;
+
+    if (!eventName || !startDate) {
+        return res.status(400).json({ success: false, message: 'Event name and start date are required.' });
+    }
+
+    const insertQuery = `
+        INSERT INTO calendar_events 
+        (user_id, event_name, description, start_date, end_date, location, event_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    // Ensure optional fields are handled correctly (null if not provided)
+    const insertValues = [
+        userId, 
+        eventName, 
+        description || null, 
+        startDate, 
+        endDate || null, 
+        location || null, 
+        eventType || 'General', 
+    ];
+    
+    let connection;
+    try {
+        // Use a transaction/single query to insert and then fetch the created record
+        connection = await pool.getConnection();
+        const [results] = await connection.query(insertQuery, insertValues);
+        
+        // Fetch the newly created event to return the full object with IDs and timestamps
+        const [rows] = await connection.query('SELECT * FROM calendar_events WHERE id = ?', [results.insertId]);
+        
+        const newEvent = formatCalendarEvent(rows[0]); // Format it using the helper
+        connection.release();
+
+        res.status(201).json({
+            success: true,
+            message: 'Calendar event created successfully.',
+            event: newEvent // Returns the formatted new event
+        });
+    } catch (error) {
+        if (connection) connection.release();
+        return handleServerError(res, error, 'Error creating calendar event');
+    }
+});
+
+
+// ----------------------------------------------------------------------
+// 2. PUT /api/events/calendar/:id: Update an existing calendar event
+// ----------------------------------------------------------------------
+app.put('/api/events/calendar/:id', verifyToken, async (req, res) => {
+    const userId = req.user.id;
+    const eventId = req.params.id; // Event ID from URL
+    const { eventName, description, startDate, endDate, location, eventType } = req.body;
+
+    if (!eventName || !startDate) {
+        return res.status(400).json({ success: false, message: 'Event name and start date are required for update.' });
+    }
+
+    const updateQuery = `
+        UPDATE calendar_events
+        SET event_name = ?, description = ?, start_date = ?, end_date = ?, location = ?, event_type = ?, updated_at = CURRENT_TIMESTAMP()
+        WHERE id = ? AND user_id = ?
+    `;
+
+    const updateValues = [
+        eventName, 
+        description || null, 
+        startDate, 
+        endDate || null, 
+        location || null, 
+        eventType || 'General', 
+        eventId, // WHERE clause 1
+        userId   // WHERE clause 2 (Security check: must be the user's event)
+    ];
+    
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        const [results] = await connection.query(updateQuery, updateValues);
+
+        if (results.affectedRows === 0) {
+            connection.release();
+            return res.status(404).json({ success: false, message: 'Event not found or unauthorized to update.' });
+        }
+        
+        // Fetch the updated event to return the latest object
+        const [rows] = await connection.query('SELECT * FROM calendar_events WHERE id = ?', [eventId]);
+        const updatedEvent = formatCalendarEvent(rows[0]);
+        connection.release();
+
+        res.status(200).json({
+            success: true,
+            message: 'Calendar event updated successfully.',
+            event: updatedEvent
+        });
+
+    } catch (error) {
+        if (connection) connection.release();
+        return handleServerError(res, error, 'Error updating calendar event');
+    }
+});
+
+
+// ----------------------------------------------------------------------
+// 3. DELETE /api/events/calendar/:id: Delete a calendar event
+// ----------------------------------------------------------------------
+app.delete('/api/events/calendar/:id', verifyToken, async (req, res) => {
+    const userId = req.user.id;
+    const eventId = req.params.id; // Event ID from URL
+
+    const deleteQuery = 'DELETE FROM calendar_events WHERE id = ? AND user_id = ?';
+    
+    try {
+        const [results] = await pool.query(deleteQuery, [eventId, userId]);
+
+        if (results.affectedRows === 0) {
+            // Either the ID didn't exist, or it belonged to another user.
+            return res.status(404).json({ success: false, message: 'Event not found or unauthorized to delete.' });
+        }
+
+        res.status(200).json({ success: true, message: 'Calendar event deleted successfully.' });
+
+    } catch (error) {
+        return handleServerError(res, error, 'Error deleting calendar event');
+    }
+});
+
+//------------------------------------------------------------------------------
+
+// POST /api/user/clear-cache: Clears cache/session data
+app.post('/api/user/clear-cache', verifyToken, async (req, res) => {
+    const userId = req.user.id;
+    // NOTE: This endpoint confirms the user is authenticated. 
+    // In a real application, you might:
+    // 1. Invalidate all active session tokens for this user (if using a blacklist/DB).
+    // 2. Clear out any temporary files or cache entries specific to this user.
+    
+    // For this implementation, we simply confirm the action and rely on 
+    // the client to delete its local token and data.
+
+    console.log(` User ID ${userId} triggered local cache clearance.`);
+
+    // Return 200 OK. The client will interpret this as success and perform local cleanup.
+    res.status(200).json({ 
+        success: true, 
+        message: 'Server acknowledged cache clearance request. Please clear local data.', 
+    });
+});
+
+// POST /api/auth/forgot-password: Initiates the password reset process
+app.post('/api/auth/forgot-password', async (req, res) => {
+    const { email } = req.body;
+
+    if (!email) {
+        return res.status(400).json({ success: false, message: 'Email address is required.' });
+    }
+
+    try {
+        // 1. Check if the user exists
+        const [users] = await pool.query('SELECT id, email FROM users WHERE email = ?', [email]);
+        if (users.length === 0) {
+            // NOTE: For security, return a generic success message even if the user doesn't exist
+            // to prevent email enumeration.
+            console.log(`Password reset requested for non-existent email: ${email}`);
+            return res.status(200).json({
+                success: true,
+                message: 'If an account exists, a password reset link has been sent to your email.'
+            });
+        }
+        
+        const user = users[0];
+        
+        // 2. Generate a secure, unique reset token (e.g., using crypto.randomBytes)
+        const resetToken = crypto.randomBytes(32).toString('hex');
+        
+        // 3. Hash the token for database storage (CRITICAL for security)
+        const tokenHash = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+        // 4. Set token expiration time (e.g., 1 hour from now)
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+        // 5. Store the hashed token in the password_resets table
+        // (Assuming you have a 'password_resets' table that matches the required schema
+        // based on standard practice for your project)
+        const insertQuery = `
+            INSERT INTO password_resets (user_id, email, token_hash, expires_at)
+            VALUES (?, ?, ?, ?)
+        `;
+        await pool.query(insertQuery, [user.id, user.email, tokenHash, expiresAt]);
+        
+        // 6. Send the reset email (MOCK IMPLEMENTATION)
+        // In a real application, you would use a service like Nodemailer here.
+        console.log(`Password reset link sent to ${email}. Token: ${resetToken}`);
+        
+        // 7. Send generic success response back to the client
+        res.status(200).json({
+            success: true,
+            message: 'A password reset link has been sent to your email.'
+        });
+
+    } catch (error) {
+        return handleServerError(res, error, 'Error initiating password reset');
     }
 });
 
 // ------------------------------------------------------------------------------
-// 6. START SERVER
+// 6. START SERVER FUNCTION
 // ------------------------------------------------------------------------------
-app.listen(PORT, () => {
-    console.log(`🚀 Server running on http://localhost:${PORT}`);
-});
+
+// ... (All API endpoints and utility functions above) ...
+
+// chrono_application_backend/server.js (Inside startServer function)
+
+// ------------------------------------------------------------------------------
+// 6. START SERVER EXECUTION
+// ------------------------------------------------------------------------------
+
+async function startServer() {
+    try {
+        // Load the graph data (reads GeoJSON, builds graph) BEFORE the server starts listening
+        const navGraphInstance = await NavigationGraph.loadFromFiles();
+        console.log("Navigation Graph loaded successfully.");
+
+        // Create the HTTP server using the Express app
+        const server = http.createServer(app);
+        const wss = new WebSocket.Server({ server }); // WebSocket server instance
+        
+        // --- B. Setup Navigation Routes (API) ---
+        // 1. Require the routes module (which returns a function).
+        const navigationRouterFunction = require('./routes/navigationRoutes');
+
+        // 2. Execute that function immediately, passing the loaded graph instance.
+        const navigationRouter = navigationRouterFunction(navGraphInstance); 
+
+        // 3. Register the final router.
+        app.use('/api/v1', navigationRouter); // <-- Use the final Router object
+
+        // --- C. Setup WebSockets (Real-Time) ---
+        wss.on('connection', function connection(ws) {
+            console.log('Client connected to WebSocket.');
+            // ... (WebSocket handlers) ...
+        });
+
+        // --- D. Start HTTP and WebSocket Server ---
+        // This is the only place the server should start listening.
+        server.listen(HTTP_PORT, () => {
+            console.log(`🚀 Server running on http://localhost:${HTTP_PORT}`);
+            // The database connection message should appear before this line.
+        });
+
+    } catch (error) {
+        console.error("Failed to start server. Check GeoJSON file paths or syntax:", error.message);
+        process.exit(1);
+    }
+}
+
+// EXECUTE THE CONSOLIDATED START FUNCTION
+startServer();
+
+// DELETE all other previous startup code or comments below this line.
+// The file should end here.
