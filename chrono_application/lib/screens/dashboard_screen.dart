@@ -10,6 +10,9 @@ import 'announcement_screen.dart';
 import '../models/schedule_entry.dart'; // Import the specific model
 import '../services/api_service.dart'; // REQUIRED IMPORT for fetching data
 import 'add_pdf_screen.dart';
+import '../providers/schedule_provider.dart'; // REQUIRED to use ScheduleProvider type
+// dashboard_screen.dart (Top of File)
+import 'package:provider/provider.dart'; // <--- CRITICAL FIX: Add this line
 
 // --- Placeholder Screens (Unchanged) ---
 class ProfilePlaceholderScreen extends StatelessWidget {
@@ -138,14 +141,14 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
 
-  // 🎯 REQUIRED: Initialize ApiService for fetching data
+  // REQUIRED: Initialize ApiService for fetching data
   final ApiService _apiService = ApiService();
 
   // --- Search State ---
   late TextEditingController _searchController;
   String _searchQuery = ''; // State to hold the current search text
 
-  // 1. 🚀 STATE: This structure holds the processed schedule data.
+  // 1. STATE: This structure holds the processed schedule data.
   Map<String, dynamic> _scheduleData = const {
     'semester': 'No Schedule Uploaded',
     'total_units': '0',
@@ -159,7 +162,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.initState();
     // Initialize search controller
     _searchController = TextEditingController();
-    // 🎯 CRITICAL FIX: Load user schedules from the database when the dashboard initializes.
+    // CRITICAL FIX: Load user schedules from the database when the dashboard initializes.
     _loadUserSchedules();
   }
 
@@ -214,7 +217,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // 2. 🚀 UPDATER: Accepts the List<ScheduleEntry> returned from AddPdfScreen/Edit Screen
+  // 2. UPDATER: Accepts the List<ScheduleEntry> returned from AddPdfScreen/Edit Screen
   void _updateScheduleData(List<ScheduleEntry> entries) {
     String semesterName = 'No Schedule Uploaded';
     String totalUnits = '0';
@@ -287,7 +290,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
   */
 
-  // 3. ❌ NEW: Delete Handler - Performs API call and updates local state
+  // 3. NEW: Delete Handler - Performs API call and updates local state
   Future<void> _deleteScheduleEntry(ScheduleEntry entry) async {
     final scheduleId = entry.id;
     if (scheduleId == null) {
@@ -317,9 +320,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       // ignore: use_build_context_synchronously
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            '✅ Schedule ${entry.scheduleCode} deleted successfully!',
-          ),
+          content: Text('Schedule ${entry.scheduleCode} deleted successfully!'),
         ),
       );
     } catch (e) {
@@ -327,7 +328,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       // Show failure message
       // ignore: use_build_context_synchronously
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❌ Failed to delete schedule: ${e.toString()}')),
+        SnackBar(content: Text('Failed to delete schedule: ${e.toString()}')),
       );
     } finally {
       setState(() {
@@ -350,7 +351,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return (_scheduleData['courses'] as List?)?.cast<ScheduleEntry>() ?? [];
   }
 
-  // 4. 🗑️ NEW: Confirmation Dialog
+  // 4. NEW: Confirmation Dialog
   Future<void> _confirmDeletion(ScheduleEntry entry) async {
     final shouldDelete = await showDialog<bool>(
       context: context,
@@ -380,7 +381,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // 🎯 NEW: Modal Content Helper (Read-Only Detail View)
+  // NEW: Modal Content Helper (Read-Only Detail View)
   Widget _buildScheduleDetailModalContent(
     BuildContext context,
     ScheduleEntry data,
@@ -506,7 +507,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // 🎯 NEW: Function to display the modal
+  // NEW: Function to display the modal
   void _showScheduleDetailModal(ScheduleEntry data) {
     showModalBottomSheet(
       context: context,
@@ -637,7 +638,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     height: 35,
                     child: Row(
                       children: [
-                        // 🎯 MODIFIED: "View" button now opens the modal
+                        // MODIFIED: "View" button now opens the modal
                         OutlinedButton(
                           onPressed: () => _showScheduleDetailModal(data),
                           style: OutlinedButton.styleFrom(
@@ -656,7 +657,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
 
                         const SizedBox(width: 8), // Spacer
-                        // ❌ Delete Text Button (Remains the same)
+                        // Delete Text Button (Remains the same)
                         TextButton(
                           onPressed: () => _confirmDeletion(data),
                           style: TextButton.styleFrom(
@@ -711,12 +712,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildHomeContent(BuildContext context) {
     final String userName = widget.userData['fullname'] ?? 'User';
 
-    // 3. 🔄 FETCH DATA: Get the filtered list based on search query.
+    // 3.FETCH DATA: Get the filtered list based on search query.
     final List<ScheduleEntry> upcomingClasses = _getFilteredClasses();
 
     const int alphaFor10Percent = 26;
 
-    // 🎯 FIX: Display CircularProgressIndicator while loading
+    // FIX: Display CircularProgressIndicator while loading
     if (_isLoading) {
       return const Center(
         child: Padding(
@@ -754,8 +755,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
           ),
-
+          //-----------------------------------------------------------------
           // --- Search Bar (Functional Input) ---
+          //-----------------------------------------------------------------
           Padding(
             padding: const EdgeInsets.symmetric(
               horizontal: 20.0,
@@ -790,8 +792,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
 
           const SizedBox(height: 20),
-
+          //-----------------------------------------------------------------
           // --- Schedule Summary Card (Updated to use new state) ---
+          //-----------------------------------------------------------------
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20.0),
             child: _buildSummaryCard(context),
@@ -893,7 +896,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         style: TextStyle(color: Theme.of(context).hintColor),
                       ),
                     ),
-                    // 4. 🚀 ACTION: Await the result and check for Map<String, dynamic>
+                    // 4. ACTION: Await the result and check for Map<String, dynamic>
                     SizedBox(
                       height: 40, // Slightly taller for better touch target
                       child: FilledButton(
@@ -908,7 +911,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                           );
 
-                          // 🚀 CRITICAL FIX: Check if the result is the expected List<ScheduleEntry>
+                          // CRITICAL FIX: Check if the result is the expected List<ScheduleEntry>
                           if (result is List<ScheduleEntry>) {
                             // Update the state with the newly extracted list
                             _updateScheduleData(result);
@@ -964,7 +967,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
           const SizedBox(height: 10),
 
-          // 5. 🔄 DISPLAY: Upcoming Classes List (Uses _getUpcomingClasses)
+          // 5. DISPLAY: Upcoming Classes List (Uses _getUpcomingClasses)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20.0),
             child: Column(
@@ -1009,23 +1012,70 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  // CORRECTED: Return type must be BottomNavigationBarItem
+  BottomNavigationBarItem _buildNotificationItem(
+    int count,
+    Color primaryColor,
+  ) {
+    // If the count is 0, just show the standard notification icon
+    final Icon icon = count == 0
+        ? const Icon(Icons.notifications)
+        : const Icon(Icons.notifications_active);
+
+    return BottomNavigationBarItem(
+      icon: Stack(
+        clipBehavior: Clip.none, // Allows the badge to overflow
+        children: [
+          icon,
+          if (count > 0)
+            Positioned(
+              right: -5, // Adjusts position of the badge relative to the bell
+              top: -5,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: Colors.white,
+                    width: 1,
+                  ), // Optional white border for contrast
+                ),
+                constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                child: Text(
+                  count > 99 ? '99+' : count.toString(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+        ],
+      ),
+      label: 'Notification',
+    );
+  }
+
+  // --- Build Method Integration ---
+
   @override
   Widget build(BuildContext context) {
     final Color primaryColor = Theme.of(context).colorScheme.primary;
 
-    // 🎯 Get the schedules list for passing to other screens
+    // 1. Get the schedules list for passing to other screens (This logic is fine)
     final List<ScheduleEntry> currentSchedules = _getUpcomingClasses();
 
-    // Define and initialize screens here, where context is valid
+    // 2. Define and initialize screens (Pass currentSchedules as props for now)
     final List<Widget> screens = [
       _buildHomeContent(context),
       const ScheduleScreen(),
-      // 🎯 FIX: Pass the current list of schedules to the DirectionScreen
       DirectionScreen(scheduleEntries: currentSchedules),
-      // 🎯 FIX: Pass the current list of schedules to the NotificationScreen
       NotificationScreen(scheduleEntries: currentSchedules),
 
-      // Index 4: Profile placeholder - Passes all required parameters
+      // Index 4: Profile placeholder
       ProfilePlaceholderScreen(
         onBackToSettings: widget.onBackToSettings,
         onClearCachedDataTap: widget.onClearCachedDataTap,
@@ -1040,27 +1090,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Scaffold(
       body: screens[_selectedIndex],
 
-      // Bottom Navigation Bar
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: primaryColor,
-        unselectedItemColor: Theme.of(context).hintColor,
-        showUnselectedLabels: true,
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_month),
-            label: 'Schedule',
-          ),
-          BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Direction'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.notifications),
-            label: 'Notification',
-          ),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
-        ],
+      // 3. Bottom Navigation Bar with Provider Integration
+      // We wrap the entire BottomNavigationBar in a Consumer to react to count changes.
+      bottomNavigationBar: Consumer<ScheduleProvider>(
+        builder: (context, scheduleProvider, child) {
+          final int notificationCount = scheduleProvider.totalScheduleCount;
+
+          return BottomNavigationBar(
+            type: BottomNavigationBarType.fixed,
+            selectedItemColor: primaryColor,
+            unselectedItemColor: Theme.of(context).hintColor,
+            showUnselectedLabels: true,
+            currentIndex: _selectedIndex,
+            onTap: _onItemTapped,
+            items: [
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.home),
+                label: 'Home',
+              ),
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.calendar_month),
+                label: 'Schedule',
+              ),
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.map),
+                label: 'Direction',
+              ),
+
+              // DYNAMIC NOTIFICATION ICON (Index 3)
+              _buildNotificationItem(notificationCount, primaryColor),
+
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.person),
+                label: 'Profile',
+              ),
+            ],
+          );
+        },
       ),
     );
   }
