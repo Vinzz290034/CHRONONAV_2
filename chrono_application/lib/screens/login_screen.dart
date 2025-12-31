@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 // Assuming your ApiService file is in the 'services' directory one level up
 import '../services/api_service.dart';
+//import 'forgot_password_screen.dart';
+import 'guest_screen.dart'; // Ensure this filename matches your file
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback onRegisterTap;
@@ -83,6 +85,19 @@ class LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  // 🎯 NEW: Navigation handler for Forgot Password
+  /*
+  void _navigateToForgotPassword() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ForgotPasswordScreen(
+          onBackToLogin: () =>
+              Navigator.of(context).pop(), // Pop to return to LoginScreen
+        ),
+      ),
+    );
+  }
+  */
   @override
   Widget build(BuildContext context) {
     // FIX 1: Replace deprecated onBackground/background with onSurface/surface
@@ -147,19 +162,7 @@ class LoginScreenState extends State<LoginScreen> {
                     value!.isEmpty ? 'Password is required.' : null,
               ),
 
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () {
-                    debugPrint('Forgot Password clicked');
-                  },
-                  child: Text(
-                    'Forgot Password?',
-                    style: TextStyle(color: chrononaAccentColor, fontSize: 14),
-                  ),
-                ),
-              ),
-
+              //This area is origin Align to the right Forgot Password link
               const SizedBox(height: 20),
 
               // --- Error Message Display ---
@@ -212,15 +215,27 @@ class LoginScreenState extends State<LoginScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    "Don't have an account? ",
-                    // ignore: deprecated_member_use
-                    style: TextStyle(color: textColor.withOpacity(0.8)),
+                  // --- GUEST WORD ---
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const GuestScreen(),
+                        ),
+                      );
+                    },
+                    child: Text(
+                      'Guest',
+                      style: TextStyle(
+                        color: chrononaAccentColor,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                   GestureDetector(
                     onTap: widget.onRegisterTap,
                     child: Text(
-                      'Register here',
+                      'Signup',
                       style: TextStyle(
                         color: chrononaAccentColor,
                         fontWeight: FontWeight.bold,
@@ -228,6 +243,15 @@ class LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ],
+              ),
+
+              const SizedBox(height: 10),
+
+              // Optional: Placeholder for external links/version info outside the card
+              Text(
+                'By signing up or logging in, you consent to ChronoNav\'s Terms of Use and Privacy Policy.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: chrononaAccentColor),
               ),
               const SizedBox(height: 30),
             ],
