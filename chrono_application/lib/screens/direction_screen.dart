@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
-import '../models/schedule_entry.dart'; // REQUIRED IMPORT
+import 'package:provider/provider.dart';
+
+import '../models/schedule_entry.dart';
+import '../providers/location_provider.dart';
+import '../widgets/navigation_map.dart';
 
 // -----------------------------------------------------------------
-// 1. Custom QuickNavItem Widget (Stateful for Tap Animation)
-// (Kept unchanged for visual feedback)
+// 1. Custom QuickNavItem Widget
 // -----------------------------------------------------------------
-
 class QuickNavItem extends StatefulWidget {
   final IconData icon;
   final String label;
@@ -64,7 +66,6 @@ class _QuickNavItemState extends State<QuickNavItem> {
         curve: Curves.easeOut,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          curve: Curves.easeInOut,
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: _isPressed ? pressedColor : cardColor,
@@ -99,7 +100,7 @@ class _QuickNavItemState extends State<QuickNavItem> {
 }
 
 // -----------------------------------------------------------------
-// 2. DirectionScreen (Stateful for Search Functionality)
+// 2. DirectionScreen
 // -----------------------------------------------------------------
 
 class DirectionScreen extends StatefulWidget {
@@ -112,38 +113,61 @@ class DirectionScreen extends StatefulWidget {
 }
 
 class _DirectionScreenState extends State<DirectionScreen> {
-  // State for search functionality
   late TextEditingController _searchController;
   List<String> _filteredRooms = [];
 
-  // 🎯 Helper to extract UNIQUE rooms from the schedule list
+  // Scroll Controller for floor buttons
+  late ScrollController _floorScrollController;
+
+  int _selectedFloor = 1;
+
+  // Simple stair labels for the second dialog
+  final List<String> availableStairs = [
+    'Stair 1',
+    'Stair 2',
+    'Stair 3',
+    'Stair 4',
+    'Stair 5',
+  ];
+
   List<String> get _uniqueRooms {
     return widget.scheduleEntries
         .where((entry) => entry.room?.isNotEmpty == true)
         .map((entry) => entry.room!)
-        .toSet() // Gets only unique rooms
+        .toSet()
         .toList();
+  }
+
+  int _getRoomFloor(String room) {
+    if (room.isNotEmpty) {
+      int? floor = int.tryParse(room[0]);
+      return floor ?? 1;
+    }
+    return 1;
   }
 
   @override
   void initState() {
     super.initState();
+    _floorScrollController = ScrollController(); // Initialize controller
     _searchController = TextEditingController();
-    // Initialize filtered list with all unique rooms on startup
     _filteredRooms = _uniqueRooms;
-
-    // Start listening to text changes for dynamic filtering
     _searchController.addListener(_onSearchChanged);
   }
 
   @override
   void dispose() {
+    _floorScrollController.dispose(); // Dispose controller
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<LocationProvider>(context, listen: false).clearRoute();
+    });
+
     super.dispose();
   }
 
-  // --- Search Logic ---
   void _onSearchChanged() {
     final query = _searchController.text.toLowerCase().trim();
 
@@ -154,65 +178,425 @@ class _DirectionScreenState extends State<DirectionScreen> {
       return;
     }
 
-    // 🎯 Filter the unique room list based on the search query
     final filtered = _uniqueRooms.where((room) {
-      // Check if the query matches the room number OR any relevant course code/title
       return room.toLowerCase().contains(query) ||
           widget.scheduleEntries.any((entry) {
-            return (entry.scheduleCode.toLowerCase().contains(query) ||
-                entry.title.toLowerCase().contains(query));
+            return entry.scheduleCode.toLowerCase().contains(query) ||
+                entry.title.toLowerCase().contains(query);
           });
     }).toList();
 
-    // Since the rooms are unique, we just update the list
     setState(() {
       _filteredRooms = filtered;
     });
   }
 
-  // --- Helper Methods (Dialog, UI Builders) ---
+  void _selectFloor(int floor) {
+    setState(() {
+      _selectedFloor = floor;
+    });
 
-  void _showStartDirectionDialog(BuildContext context, String destination) {
+    // Auto-scroll logic to center the selected floor button
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_floorScrollController.hasClients) {
+        const double buttonWidth = 38.0;
+        final double screenWidth = MediaQuery.of(context).size.width;
+
+        final double targetOffset =
+            (floor - 1) * buttonWidth - (screenWidth / 2) + (buttonWidth / 2);
+
+        _floorScrollController.animateTo(
+          targetOffset.clamp(
+            0.0,
+            _floorScrollController.position.maxScrollExtent,
+          ),
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+
+    final locationProvider = Provider.of<LocationProvider>(
+      context,
+      listen: false,
+    );
+
+    if (locationProvider.routePath.isEmpty) {
+      locationProvider.clearRoute();
+    }
+  }
+
+  String _getFloorImagePath(int floor) {
+    return 'assets/floorplans/floor_$floor.png';
+  }
+
+  // UPDATED FUNCTION: Generates unique instructions for 521, 530C, and Restroom
+  List<String> _generateInstructions(
+    String startPoiId,
+    String destination,
+    String startFloorId,
+    int destinationFloor,
+  ) {
+    // Determine the room number (e.g., '521' or '530C')
+    final destinationPoiId = destination.replaceFirst('Room ', '');
+    final startFloor = startFloorId.replaceFirst('level', 'Floor ');
+    final destFloor = destinationFloor.toString();
+
+    // Determine floor transition step
+    String floorChangeInstruction = startFloor == destFloor
+        ? '3. Continue on this floor.'
+        : '3. Take the nearest elevator or stairs to Floor $destFloor.';
+
+    List<String> initialSteps;
+
+    // STEP 1: STAIR-SPECIFIC STARTING STEPS
+    switch (startPoiId) {
+      case 'Stair 1':
+        initialSteps = [
+          '1. Exit Stair 1 and turn right toward the Computer Lab hallway.',
+          '2. Walk past the lab entrance and head toward the North wing.',
+          floorChangeInstruction,
+        ];
+        break;
+      case 'Stair 2':
+        initialSteps = [
+          '1. Exit Stair 2 and proceed West toward the central Elevator core.',
+          '2. Head North past the Borrower Services desk.',
+          floorChangeInstruction,
+        ];
+        break;
+      case 'Stair 3':
+        initialSteps = [
+          '1. Exit Stair 3 and turn West onto the main hallway.',
+          '2. Follow the corridor as it curves toward the building center.',
+          floorChangeInstruction,
+        ];
+        break;
+      case 'Stair 4':
+        initialSteps = [
+          '1. From Stair 4, exit and head South towards the Faculty wing.',
+          '2. Pass the Administrative office and turn right at the first intersection.',
+          floorChangeInstruction,
+        ];
+        break;
+      case 'Stair 5':
+        initialSteps = [
+          '1. Exit the rear stairwell (Stair 5) and walk straight toward the Canteen area.',
+          '2. Turn right before the Canteen entrance to locate the main elevators.',
+          floorChangeInstruction,
+        ];
+        break;
+      default:
+        initialSteps = [
+          '1. Exit your current stairwell and locate the main corridor.',
+          '2. Head toward the central elevator lobby area.',
+          floorChangeInstruction,
+        ];
+    }
+
+    // STEP 2: ARRIVAL LOGIC FOR RESTROOM, 521, AND 530C
+    String finalDestinationStep =
+        '4. Your destination, $destination, is nearby.';
+
+    // Custom final steps based on your specific rooms
+    if (destination.contains('Cafeteria')) {
+      finalDestinationStep =
+          '4. Enter the main dining hall; the Cafeteria counter is located directly ahead past the seating area.';
+    } else if (destination.contains('Dept. Office')) {
+      finalDestinationStep =
+          '4. Proceed to the Dean\'s wing; the Department Office is the large glass-door suite at the end of the hall.';
+    } else if (destination.contains('Restroom')) {
+      finalDestinationStep =
+          '4. Locate the hallway near the elevators; the Restroom is situated behind the main lobby area.';
+    } else if (destinationPoiId == '530C') {
+      finalDestinationStep =
+          '4. Turn right at the faculty hallway. Room 530C is at the far end on your left.';
+    } else if (destinationPoiId == '521') {
+      finalDestinationStep =
+          '4. Proceed West past the Dean\'s Office. Room 521 is on the right, across from Lab 525.';
+    }
+    // Return the combined 4-step instruction list
+    return [
+      initialSteps[0],
+      initialSteps[1],
+      initialSteps[2],
+      finalDestinationStep,
+    ];
+  }
+
+  void _startNavigation({
+    required String destination,
+    required String destinationPoiId,
+    required int destinationFloor,
+    required String startPoiId,
+    required String startFloorId,
+  }) {
+    final String destinationFloorId = 'level$destinationFloor';
+
+    Provider.of<LocationProvider>(context, listen: false).findAndSetRoute(
+      poiId: destinationPoiId,
+      startPoiId: startPoiId,
+      startFloorID: startFloorId,
+      destinationFloorID: destinationFloorId,
+    );
+
+    // Switch to the destination floor and trigger the button scroll
+    if (_selectedFloor != destinationFloor) {
+      _selectFloor(destinationFloor);
+    }
+
+    // --- GENERATE UNIQUE INSTRUCTIONS ---
+    final List<String> instructionSteps = _generateInstructions(
+      startPoiId,
+      destination,
+      startFloorId,
+      destinationFloor,
+    );
+
+    // REPLACE SNACKBAR WITH CUSTOM SCROLLABLE DIALOG
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54, // Set barrier color for a dark overlay
+      builder: (context) => InstructionOverlayDialog(
+        instructions: instructionSteps,
+        destination: destination,
+        startPoiId: startPoiId,
+      ),
+    );
+  }
+
+  // Second dialog to select the staircase (Stair 1 to 5)
+  void _showStairSelectionDialog(
+    BuildContext context,
+    String destination,
+    int destinationFloor,
+    int startingFloor,
+  ) {
+    final rawPoiId = destination.startsWith('Room ')
+        ? destination.replaceFirst('Room ', '')
+        : destination;
+
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
         return AlertDialog(
-          title: const Text('Start Directions?'),
-          content: Text(
-            'Do you want to start navigating to the "$destination" now?',
+          // Custom question
+          title: const Text('Which stair are you standing now?'),
+          // FIX: Corrected MainAxisSize typo
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Select your staircase on Floor $startingFloor:',
+                style: TextStyle(
+                  color: Theme.of(context).textTheme.bodyMedium!.color,
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              // Generate the simple stair list (1-5)
+              ...availableStairs
+                  .map(
+                    (stairName) => ListTile(
+                      leading: const Icon(Icons.stairs),
+                      title: Text(stairName), // e.g., "Stair 1"
+                      onTap: () {
+                        Navigator.of(dialogContext).pop();
+                        _startNavigation(
+                          destination: destination,
+                          destinationPoiId: rawPoiId,
+                          destinationFloor: destinationFloor,
+                          startPoiId: stairName,
+                          startFloorId: 'level$startingFloor',
+                        );
+                      },
+                    ),
+                  )
+                  .toList(),
+            ],
           ),
-          actions: <Widget>[
-            TextButton(
-              child: const Text('Cancel'),
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-              },
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                debugPrint('Navigating to $destination...');
-              },
-              child: const Text('Start'),
-            ),
-          ],
         );
       },
     );
   }
 
-  // 🎯 WIDGET: Builds the list of rooms from the schedule
+  // First dialog to select the starting floor (1 to 8)
+  void _showStartingFloorSelectionDialog(
+    BuildContext context,
+    String destination,
+    int destinationFloor,
+  ) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Which floor are you starting from?'),
+          // FIX: Wrap the GridView in a SizedBox to provide bounded constraints
+          content: SizedBox(
+            width: double.maxFinite, // Allow content to expand horizontally
+            height:
+                250, // Fixed height to prevent intrinsic size calculation error
+            // FIX: Corrected MainAxisSize typo
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Your destination is Floor $destinationFloor. Select your current floor:',
+                  style: TextStyle(
+                    color: Theme.of(context).textTheme.bodyMedium!.color,
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // Floor buttons 1 through 8
+                Expanded(
+                  // Use Expanded since the parent is now sized
+                  child: GridView.count(
+                    crossAxisCount: 4,
+                    // shrinkWrap and NeverScrollableScrollPhysics are okay here
+                    // because the GridView is now in a bounded height (SizedBox parent)
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    childAspectRatio: 1.5,
+                    children: List.generate(8, (index) {
+                      final floor = index + 1;
+                      return ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Theme.of(
+                            context,
+                          ).colorScheme.primary,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: Text(
+                          '$floor',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                          ),
+                        ),
+                        onPressed: () {
+                          Navigator.of(dialogContext).pop();
+
+                          // 1. Automatically move floor selector to the chosen STARTING floor
+                          _selectFloor(floor);
+
+                          // 2. Show Custom Message
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Finally you are now in Floor $floor!',
+                              ),
+                              duration: const Duration(milliseconds: 600),
+                            ),
+                          );
+
+                          // 3. DELAY: Pause slightly before showing the next dialog
+                          Future.delayed(const Duration(milliseconds: 600), () {
+                            // 4. Proceed to ask for the staircase on this STARTING floor
+                            _showStairSelectionDialog(
+                              context,
+                              destination,
+                              destinationFloor,
+                              floor,
+                            );
+                          });
+                        },
+                      );
+                    }),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStepByStepInstructions(BuildContext context) {
+    final locationProvider = Provider.of<LocationProvider>(context);
+
+    if (locationProvider.routePath.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final List<String> steps = locationProvider.routeSteps;
+
+    if (steps.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20.0),
+        child: Center(child: Text('Calculating route steps...')),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 30),
+        const Text(
+          'Step-by-Step Directions',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 10),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: steps.length,
+          itemBuilder: (context, index) {
+            final step = steps[index];
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 24,
+                    height: 24,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      '${index + 1}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(step, style: const TextStyle(fontSize: 16)),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 30),
+      ],
+    );
+  }
+
   Widget _buildScheduleRoomsList(BuildContext context) {
-    final rooms = _filteredRooms; // Use the filtered list
-    final primaryColor = Theme.of(context).colorScheme.primary;
+    final rooms = _filteredRooms;
     final hintColor = Theme.of(context).hintColor;
+    final primaryColor = Theme.of(context).colorScheme.primary;
 
     if (rooms.isEmpty && _searchController.text.isNotEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: Text(
-          'No schedule rooms match your search query.',
-          style: TextStyle(color: hintColor, fontStyle: FontStyle.italic),
+          'No matching rooms found.',
+          style: TextStyle(color: hintColor),
         ),
       );
     }
@@ -221,8 +605,8 @@ class _DirectionScreenState extends State<DirectionScreen> {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: Text(
-          'No assigned rooms found in your current schedule. Upload a PDF.',
-          style: TextStyle(color: hintColor, fontStyle: FontStyle.italic),
+          'No rooms found in schedule.',
+          style: TextStyle(color: hintColor),
         ),
       );
     }
@@ -232,36 +616,82 @@ class _DirectionScreenState extends State<DirectionScreen> {
       children: [
         const SizedBox(height: 30),
         Text(
-          'My Schedule Rooms (${rooms.length} found)',
+          'My Schedule Rooms (${rooms.length})',
           style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 10),
-
-        // List of unique rooms as tappable tiles
-        ...rooms
-            .map(
-              (room) => ListTile(
-                leading: Icon(Icons.meeting_room, color: primaryColor),
-                title: Text(
-                  'Room $room',
-                  style: const TextStyle(fontWeight: FontWeight.w500),
-                ),
-                trailing: const Icon(Icons.directions_run, size: 20),
-                onTap: () {
-                  // Initiate navigation to the specific room
-                  _showStartDirectionDialog(context, 'Room $room');
-                },
-              ),
-            )
-            // ignore: unnecessary_to_list_in_spreads
-            .toList(),
+        // FIXED: Removed unnecessary .toList()
+        ...rooms.map((room) {
+          final floor = _getRoomFloor(room);
+          return ListTile(
+            leading: Icon(Icons.meeting_room, color: primaryColor),
+            title: Text('Room $room (Floor $floor)'),
+            trailing: const Icon(Icons.directions_run),
+            // CRITICAL CHANGE: Immediately ask for starting floor
+            onTap: () =>
+                _showStartingFloorSelectionDialog(context, 'Room $room', floor),
+          );
+        }),
         const SizedBox(height: 30),
       ],
     );
   }
 
+  Widget _buildFloorSelector(BuildContext context, bool isRouteActive) {
+    final primaryColor = Theme.of(context).colorScheme.primary;
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      controller: _floorScrollController, // ATTACH SCROLL CONTROLLER
+      child: Row(
+        // Generates 8 buttons (1 to 8)
+        children: List.generate(8, (index) {
+          final floor = index + 1;
+          final isSelected = floor == _selectedFloor;
+
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: InkWell(
+              onTap: isRouteActive ? null : () => _selectFloor(floor),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 30,
+                height: 30,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? primaryColor
+                      : Theme.of(context).cardColor,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isSelected ? primaryColor : Colors.grey,
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  '$floor',
+                  style: TextStyle(
+                    color: isSelected
+                        ? Colors.white
+                        : Theme.of(context).textTheme.bodyMedium!.color,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isRouteActive = Provider.of<LocationProvider>(
+      context,
+    ).routePath.isNotEmpty;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -269,104 +699,76 @@ class _DirectionScreenState extends State<DirectionScreen> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
-        leading: Navigator.canPop(context)
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.of(context).pop(),
-              )
-            : null,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            // --- Interactive Campus Map Header ---
+          children: [
             const Text(
               'Interactive Campus Map',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
+
             const SizedBox(height: 15),
 
-            // --- Map View Placeholder ---
-            Container(
-              height: 200,
+            _buildFloorSelector(context, isRouteActive),
+
+            SizedBox(
+              height: 250,
               width: double.infinity,
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
+              child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Theme.of(context).dividerColor,
-                  width: 1,
-                ),
-              ),
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.map_outlined,
-                      size: 48,
-                      color: Theme.of(context).hintColor,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Tap to View Full Campus Map',
-                      style: TextStyle(color: Theme.of(context).hintColor),
-                    ),
-                  ],
+                child: InteractiveViewer(
+                  maxScale: 4.0,
+                  minScale: 0.8,
+                  boundaryMargin: const EdgeInsets.all(80),
+                  child: isRouteActive
+                      ? const NavigationMap()
+                      : Image.asset(
+                          _getFloorImagePath(_selectedFloor),
+                          fit: BoxFit.cover,
+                        ),
                 ),
               ),
             ),
 
+            _buildStepByStepInstructions(context),
+
             const SizedBox(height: 30),
 
-            // --- Search Destination Section ---
             const Text(
               'Search Destination',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
+
             const SizedBox(height: 10),
-            // 🎯 FIX: Added TextEditingController and onChanged listener
+
             TextField(
               controller: _searchController,
-              onChanged: (_) => _onSearchChanged(),
               decoration: InputDecoration(
-                hintText: 'Search course name, room, or subject...',
+                hintText: 'Search room or subject...',
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10.0),
+                  borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide.none,
                 ),
                 filled: true,
                 fillColor: Theme.of(context).cardColor,
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(top: 8.0, left: 4.0),
-              child: Text(
-                'Tip: Use the search bar to find specific rooms or professors.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Theme.of(context).hintColor,
-                ),
               ),
             ),
 
-            // -----------------------------------------------------------------
-            // 🎯 REARRANGEMENT FIX: Display My Schedule Rooms List
-            // -----------------------------------------------------------------
+            const SizedBox(height: 10),
+
             _buildScheduleRoomsList(context),
 
-            // --- Quick Navigation Section ---
             const Text(
               'Quick Navigation',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
+
             const SizedBox(height: 15),
 
-            // Grid View for Navigation Buttons
             GridView.count(
               crossAxisCount: 3,
               shrinkWrap: true,
@@ -374,46 +776,175 @@ class _DirectionScreenState extends State<DirectionScreen> {
               mainAxisSpacing: 15,
               crossAxisSpacing: 15,
               childAspectRatio: 1.0,
-              children: <Widget>[
-                QuickNavItem(
-                  icon: Icons.local_library,
-                  label: 'Library',
-                  onTap: () => _showStartDirectionDialog(context, 'Library'),
-                ),
+              // FIXED: Removed unnecessary .toList()
+              children: [
                 QuickNavItem(
                   icon: Icons.restaurant,
                   label: 'Cafeteria',
-                  onTap: () => _showStartDirectionDialog(context, 'Cafeteria'),
+                  onTap: () => _showStartingFloorSelectionDialog(
+                    context,
+                    'Cafeteria',
+                    1,
+                  ),
                 ),
                 QuickNavItem(
                   icon: Icons.class_,
                   label: 'Your Classes',
-                  onTap: () =>
-                      _showStartDirectionDialog(context, 'Your Next Class'),
+                  onTap: () => _showStartingFloorSelectionDialog(
+                    context,
+                    'Your Next Class',
+                    _selectedFloor,
+                  ),
                 ),
                 QuickNavItem(
                   icon: Icons.wc,
                   label: 'Restroom',
-                  onTap: () =>
-                      _showStartDirectionDialog(context, 'Nearest Restroom'),
+                  onTap: () => _showStartingFloorSelectionDialog(
+                    context,
+                    'Nearest Restroom',
+                    _selectedFloor,
+                  ),
                 ),
                 QuickNavItem(
                   icon: Icons.business,
                   label: 'Dept. Office',
-                  onTap: () =>
-                      _showStartDirectionDialog(context, 'Department Office'),
+                  onTap: () => _showStartingFloorSelectionDialog(
+                    context,
+                    'Dept. Office',
+                    3,
+                  ),
                 ),
                 QuickNavItem(
                   icon: Icons.science,
                   label: 'Lab Room',
                   onTap: () =>
-                      _showStartDirectionDialog(context, 'Science Lab'),
+                      _showStartingFloorSelectionDialog(context, 'Lab Room', 4),
                 ),
               ],
             ),
 
             const SizedBox(height: 50),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// -----------------------------------------------------------------
+// 3. Custom Instruction Overlay Dialog
+// -----------------------------------------------------------------
+
+class InstructionOverlayDialog extends StatelessWidget {
+  final List<String> instructions;
+  final String destination;
+  final String startPoiId;
+
+  const InstructionOverlayDialog({
+    super.key,
+    required this.instructions,
+    required this.destination,
+    required this.startPoiId,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Dynamic mapping for all Quick Navigation and Room items
+    String getNavigationImage() {
+      // Extracts only the number from strings like "Stair 5"
+      final String number = startPoiId.replaceAll(RegExp(r'[^0-9]'), '');
+
+      // NEW ROOMS LOGIC
+      if (destination.contains('530B')) {
+        return 'assets/location/530b-$number.png';
+      } else if (destination.contains('544')) {
+        return 'assets/location/544-$number.png';
+      } else if (destination.contains('536')) {
+        return 'assets/location/536-$number.png';
+      }
+      // EXISTING LOGIC
+      else if (destination.contains('Lab Room')) {
+        return 'assets/location/lab-$number.png';
+      } else if (destination.contains('Dept. Office')) {
+        return 'assets/location/dean-$number.png';
+      } else if (destination.contains('Cafeteria')) {
+        return 'assets/location/cafe-$number.png';
+      } else if (destination.contains('Restroom')) {
+        return 'assets/location/cr-$number.png';
+      } else if (destination.contains('530C')) {
+        return 'assets/location/530c-$number.png';
+      } else {
+        // Default fallback for Room 521 and other general stairs
+        return 'assets/location/str-$number.png';
+      }
+    }
+
+    return Dialog(
+      backgroundColor: Theme.of(context).cardColor,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15.0)),
+      elevation: 10,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+          maxWidth: MediaQuery.of(context).size.width * 0.95,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Navigation Started:',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+              const Divider(),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.asset(
+                    getNavigationImage(),
+                    width: double.infinity,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) =>
+                        const Center(child: Text("Navigation photo not found")),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: List.generate(instructions.length, (index) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: Text(
+                          instructions[index],
+                          style: TextStyle(
+                            fontSize: 14,
+                            height: 1.4,
+                            color: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium!.color,
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
