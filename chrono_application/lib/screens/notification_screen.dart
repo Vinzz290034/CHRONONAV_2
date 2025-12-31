@@ -31,7 +31,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   bool _pushAlertsEnabled = true;
   bool _eventRemindersEnabled = true;
-  bool _systemUpdatesEnabled = false;
+  //bool _systemUpdatesEnabled = false;
 
   // 🎯 NEW STATE: Fetched list of personal events
   List<dynamic> _personalEvents =
@@ -108,12 +108,12 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
     final bool savedPush = prefs.getBool('pref_push_alerts') ?? true;
     final bool savedEvent = prefs.getBool('pref_event_reminders') ?? true;
-    final bool savedSystem = prefs.getBool('pref_system_updates') ?? false;
+    //final bool savedSystem = prefs.getBool('pref_system_updates') ?? false;
 
     setState(() {
       _pushAlertsEnabled = savedPush;
       _eventRemindersEnabled = savedEvent;
-      _systemUpdatesEnabled = savedSystem;
+      //_systemUpdatesEnabled = savedSystem;
     });
   }
 
@@ -422,7 +422,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
     setState(() {
       _pushAlertsEnabled = false;
       _eventRemindersEnabled = false;
-      _systemUpdatesEnabled = false;
+      //_systemUpdatesEnabled = false;
 
       // Save master switches
       _savePreference('pref_push_alerts', false);
@@ -584,24 +584,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
             ),
 
             const Divider(),
-
-            // --- System Updates Setting ---
-            _buildSettingRow(
-              context: context,
-              icon: Icons.system_update_alt,
-              title: 'System Updates',
-              subtitle:
-                  'Receive news about new ChronoNav features, maintenance, or version updates.',
-              value: _systemUpdatesEnabled,
-              prefsKey: 'pref_system_updates', // 🎯 Prefs Key
-              onChanged: (bool newValue) {
-                setState(() {
-                  _systemUpdatesEnabled = newValue;
-                });
-                debugPrint('System Updates changed to $newValue');
-                // TODOAdd API call to save system updates preference
-              },
-            ),
 
             const SizedBox(height: 20),
           ],
