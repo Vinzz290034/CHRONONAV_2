@@ -1,9 +1,10 @@
+// edit_calendar_event_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../models/calendar_event.dart';
-
-// Assuming you have consistent form elements in your project (like input fields)
-// For simplicity, we are defining the form structure directly.
+import '../services/api_service.dart';
 
 class EditCalendarEventScreen extends StatefulWidget {
   final CalendarEvent initialEvent;
@@ -16,16 +17,15 @@ class EditCalendarEventScreen extends StatefulWidget {
 }
 
 class _EditCalendarEventScreenState extends State<EditCalendarEventScreen> {
-  // Define controllers for the editable fields
+  // --- Controllers ---
   late TextEditingController _eventNameController;
   late TextEditingController _descriptionController;
   late TextEditingController _locationController;
-  late TextEditingController
-  _eventTypeController; // May be a Dropdown/Enum field in final UI
+  late TextEditingController _eventTypeController;
 
-  // Current start/end dates (Using DateTime objects from the model)
+  // --- Date/Time State ---
   late DateTime _startDate;
-  late DateTime _endDate;
+  DateTime? _endDate; // Correct: Made nullable
 
   @override
   void initState() {
@@ -33,17 +33,19 @@ class _EditCalendarEventScreenState extends State<EditCalendarEventScreen> {
     _eventNameController = TextEditingController(
       text: widget.initialEvent.eventName,
     );
+    // Use null-aware operator for optional fields
     _descriptionController = TextEditingController(
-      text: widget.initialEvent.description,
+      text: widget.initialEvent.description ?? '',
     );
     _locationController = TextEditingController(
-      text: widget.initialEvent.location,
+      text: widget.initialEvent.location ?? '',
     );
     _eventTypeController = TextEditingController(
-      text: widget.initialEvent.eventType,
+      text: widget.initialEvent.eventType ?? '',
     );
 
     _startDate = widget.initialEvent.startDate;
+    // Assigns the nullable endDate directly.
     _endDate = widget.initialEvent.endDate;
   }
 
@@ -56,19 +58,19 @@ class _EditCalendarEventScreenState extends State<EditCalendarEventScreen> {
     super.dispose();
   }
 
-  // --- Form Actions ---
+  // --- Date/Time Picker Logic ---
 
   Future<void> _selectDate(BuildContext context, bool isStartDate) async {
-    final initialDate = isStartDate ? _startDate : _endDate;
+    // Use _startDate if _endDate is null for picker initialization
+    final currentDateTime = isStartDate ? _startDate : _endDate ?? _startDate;
     final picked = await showDatePicker(
       context: context,
-      initialDate: initialDate,
+      initialDate: currentDateTime,
       firstDate: DateTime(2023),
       lastDate: DateTime(2030),
     );
     if (picked != null) {
-      // Preserve the time component
-      final time = isStartDate ? _startDate : _endDate;
+      final time = currentDateTime;
       final newDateTime = DateTime(
         picked.year,
         picked.month,
@@ -87,15 +89,14 @@ class _EditCalendarEventScreenState extends State<EditCalendarEventScreen> {
   }
 
   Future<void> _selectTime(BuildContext context, bool isStartTime) async {
-    final initialTime = TimeOfDay.fromDateTime(
-      isStartTime ? _startDate : _endDate,
-    );
+    final currentDateTime = isStartTime ? _startDate : _endDate ?? _startDate;
+    final initialTime = TimeOfDay.fromDateTime(currentDateTime);
     final picked = await showTimePicker(
       context: context,
       initialTime: initialTime,
     );
     if (picked != null) {
-      final date = isStartTime ? _startDate : _endDate;
+      final date = currentDateTime;
       final newDateTime = DateTime(
         date.year,
         date.month,
@@ -113,24 +114,66 @@ class _EditCalendarEventScreenState extends State<EditCalendarEventScreen> {
     }
   }
 
-  void _saveChanges() {
-    // 1. Create the updated CalendarEvent object
-    final updatedEvent = widget.initialEvent.copyWith(
+  // --- API Save Logic ---
+
+  void _saveChanges() async {
+    if (!context.mounted) return;
+    final apiService = Provider.of<ApiService>(context, listen: false);
+
+    // 1. Create the updated CalendarEvent model object
+    final updatedEventModel = widget.initialEvent.copyWith(
       eventName: _eventNameController.text.trim(),
-      description: _descriptionController.text.trim(),
-      location: _locationController.text.trim(),
-      eventType: _eventTypeController.text.trim(),
+      // Send null if text field is empty
+      description: _descriptionController.text.trim().isEmpty
+          ? null
+          : _descriptionController.text.trim(),
+      location: _locationController.text.trim().isEmpty
+          ? null
+          : _locationController.text.trim(),
+      eventType: _eventTypeController.text.trim().isEmpty
+          ? null
+          : _eventTypeController.text.trim(),
       startDate: _startDate,
-      endDate: _endDate,
-      updatedAt: DateTime.now(), // Update timestamp
+      endDate: _endDate, // Pass the nullable state directly
     );
 
-    // 2. TODOCall API Service to PUT/Update the event (using updatedEvent.toJson())
-    // For now, we simulate success and return the updated data.
+    // Show loading feedback
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Saving changes...')));
 
-    // 3. Navigate back and pass the updated event object to refresh the previous screen
-    Navigator.of(context).pop(updatedEvent);
+    try {
+      // 2. Call the update method (PUT)
+      final fullyUpdatedEvent = await apiService.updateCalendarEvent(
+        updatedEventModel,
+      );
+
+      // 3. Handle success and navigate back
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '✅ Event "${fullyUpdatedEvent.eventName}" updated successfully!',
+            ),
+          ),
+        );
+
+        // Pop the screen and pass the fully updated model back to the parent
+        Navigator.of(context).pop(fullyUpdatedEvent);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Error updating event: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
+
+  // --- UI Build ---
 
   @override
   Widget build(BuildContext context) {
@@ -152,7 +195,7 @@ class _EditCalendarEventScreenState extends State<EditCalendarEventScreen> {
             ),
             const Divider(),
 
-            // Event Name
+            // 1. Event Name
             TextField(
               controller: _eventNameController,
               decoration: const InputDecoration(
@@ -162,7 +205,7 @@ class _EditCalendarEventScreenState extends State<EditCalendarEventScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Description
+            // 2. Description
             TextField(
               controller: _descriptionController,
               decoration: const InputDecoration(
@@ -173,7 +216,7 @@ class _EditCalendarEventScreenState extends State<EditCalendarEventScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Location
+            // 3. Location
             TextField(
               controller: _locationController,
               decoration: const InputDecoration(
@@ -183,7 +226,17 @@ class _EditCalendarEventScreenState extends State<EditCalendarEventScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Date/Time Pickers
+            // 4. Event Type
+            TextField(
+              controller: _eventTypeController,
+              decoration: const InputDecoration(
+                labelText: 'Event Type',
+                prefixIcon: Icon(Icons.category),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // --- Start Date/Time Pickers ---
             const Text(
               'Start Date and Time',
               style: TextStyle(fontWeight: FontWeight.bold, height: 2.0),
@@ -209,6 +262,7 @@ class _EditCalendarEventScreenState extends State<EditCalendarEventScreen> {
             ),
             const SizedBox(height: 16),
 
+            // --- End Date/Time Pickers ---
             const Text(
               'End Date and Time',
               style: TextStyle(fontWeight: FontWeight.bold, height: 2.0),
@@ -219,7 +273,10 @@ class _EditCalendarEventScreenState extends State<EditCalendarEventScreen> {
                   child: ElevatedButton.icon(
                     onPressed: () => _selectDate(context, false),
                     icon: const Icon(Icons.calendar_month),
-                    label: Text(DateFormat('yyyy-MM-dd').format(_endDate)),
+                    label: Text(
+                      // Use _startDate if _endDate is null for display purposes
+                      DateFormat('yyyy-MM-dd').format(_endDate ?? _startDate),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -227,7 +284,10 @@ class _EditCalendarEventScreenState extends State<EditCalendarEventScreen> {
                   child: ElevatedButton.icon(
                     onPressed: () => _selectTime(context, false),
                     icon: const Icon(Icons.schedule),
-                    label: Text(DateFormat('h:mm a').format(_endDate)),
+                    label: Text(
+                      // Use _startDate if _endDate is null for display purposes
+                      DateFormat('h:mm a').format(_endDate ?? _startDate),
+                    ),
                   ),
                 ),
               ],
