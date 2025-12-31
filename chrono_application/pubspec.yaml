@@ -36,7 +36,14 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
-  http: ^0.13.6 # Use the latest stable version
+  # flutter_svg: ^2.0.0
+
+  # Map rendering
+  flutter_map: ^6.1.0 # Or the latest stable version
+  latlong2: ^0.9.1 # Required for handling LatLng data
+
+  http: ^1.6.0 # Use the latest stable version
+  web_socket_channel: ^2.4.0
   flutter_secure_storage: ^8.0.0 # Use the latest stable version
   
   shared_preferences: ^2.2.3 # Add this
@@ -84,6 +91,21 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/
-    - assets/images/
-# ... (rest of the file)
+  - assets/
+  - assets/images/
+  - assets/svg/
+  - assets/floorplans/
+  - assets/location/
+
+  # New floor-specific navigation assets
+  - assets/floors/ground_floor/
+  - assets/floors/mezzanine_floor/
+  - assets/floors/2nd_floor/
+  - assets/floors/3rd_floor/
+  - assets/floors/4th_floor/
+  - assets/floors/5th_floor/
+  - assets/floors/6th_floor/
+  - assets/floors/7th_floor/
+    
+    # Gate navigation assets
+  - assets/floors/gates/

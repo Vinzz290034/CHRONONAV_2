@@ -1,3 +1,5 @@
+// lib/services/api_service.dart
+
 import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
@@ -9,12 +11,17 @@ import '../models/announcement.dart';
 import '../models/ticket.dart';
 import '../models/personal_event.dart';
 import '../models/calendar_event.dart';
-// 🎯 NEW REQUIRED IMPORT
 import '../models/schedule_entry.dart';
 
-// --- Host Configuration ---
-const String kApiHost = 'http://10.0.2.2:3000';
-const String kLocalhostHost = 'http://localhost:3000';
+import '../models/route_coordinate.dart';
+
+// --- Host Configuration (FIXED PORT TO 3001) ---
+// Android Emulator Host: Must use 10.0.2.2 to reach the Windows host machine.
+const String kApiHost = 'http://10.0.2.2:3001';
+// Localhost Host: Used for iOS Simulator/Desktop/Web.
+const String kLocalhostHost = 'http://localhost:3001';
+
+//-------------------------------------------------------
 
 // --- ApiService Class ---
 class ApiService {
@@ -101,7 +108,7 @@ class ApiService {
     return headers;
   }
 
-  /// 🟢 NEW HELPER: Sends an authenticated HTTP request (GET/POST/PUT/DELETE)
+  /// NEW HELPER: Sends an authenticated HTTP request (GET/POST/PUT/DELETE)
   /// and handles common errors and decoding.
   Future<Map<String, dynamic>> _sendAuthenticatedRequest(
     String endpoint,
@@ -268,7 +275,7 @@ class ApiService {
     String? endDate,
     String? endTime,
     String? dayOfWeek,
-    // 🎯 UPDATED: Changed parameter name from 'location' to 'room'
+    // UPDATED: Changed parameter name from 'location' to 'room'
     String? room,
   }) async {
     // NOTE: Assuming _sendAuthenticatedRequest is available in this class
@@ -286,7 +293,7 @@ class ApiService {
         'end_time': endTime,
         'day_of_week': dayOfWeek,
         'repeat_frequency': repeatFrequency,
-        // 🎯 UPDATED: Changed JSON key from 'location' to 'room'
+        // UPDATED: Changed JSON key from 'location' to 'room'
         'room': room,
       },
       failureMessage: 'Failed to upload schedule.',
@@ -317,7 +324,7 @@ class ApiService {
       await http.MultipartFile.fromPath('schedule_file', pdfFile.path),
     );
 
-    // 🗑️ IMPROVEMENT: Removed 'user_id' from request.fields
+    // IMPROVEMENT: Removed 'user_id' from request.fields
     // (As decided previously, the server securely extracts it from the JWT token)
     // request.fields['user_id'] = userId;
 
@@ -435,7 +442,7 @@ class ApiService {
   /// This method simulates fetching the user ID from stored authentication data.
   Future<String?> getUserId() async {
     // ------------------------------------------------------------------
-    // ⚠️ IMPORTANT: In a real app, replace '123' with logic that
+    // IMPORTANT: In a real app, replace '123' with logic that
     // extracts the user ID from your stored JWT token or session manager.
     // For now, this placeholder resolves the compilation error.
     // ------------------------------------------------------------------
@@ -522,6 +529,10 @@ class ApiService {
     return eventList.map((json) => PersonalEvent.fromJson(json)).toList();
   }
 
+  // -----------------------------------------------------------------------------
+  // --- Calendar Event Management (CRUD - Using New Helper) ---
+  // -----------------------------------------------------------------------------
+
   /// Fetches calendar events for the authenticated user.
   /// Returns a list of CalendarEvent objects from the calendar_events table.
   Future<List<CalendarEvent>> fetchCalendarEvents() async {
@@ -531,11 +542,52 @@ class ApiService {
       failureMessage: 'Failed to fetch calendar events. Check token status.',
     );
 
-    // The server returns a List of calendar events
+    // The server returns the list inside the 'list' key ({list: [...]})
     final List<dynamic> eventList =
         responseBody['list'] as List<dynamic>? ?? [];
 
     return eventList.map((json) => CalendarEvent.fromJson(json)).toList();
+  }
+
+  // NEW: Creates a new calendar event (POST /api/events/calendar)
+  Future<CalendarEvent> createCalendarEvent(CalendarEvent event) async {
+    final responseBody = await _sendAuthenticatedRequest(
+      'events/calendar',
+      'POST',
+      body: event.toJson(),
+      failureMessage: 'Failed to create calendar event.',
+    );
+
+    // Server returns the created event object inside the 'event' key.
+    final eventJson = responseBody['event'] as Map<String, dynamic>;
+    return CalendarEvent.fromJson(eventJson);
+  }
+
+  // NEW: Updates an existing calendar event (PUT /api/events/calendar/:id)
+  Future<CalendarEvent> updateCalendarEvent(CalendarEvent event) async {
+    if (event.id == 0) {
+      throw Exception('Cannot update event: ID is missing or invalid.');
+    }
+
+    final responseBody = await _sendAuthenticatedRequest(
+      'events/calendar/${event.id}',
+      'PUT',
+      body: event.toJson(), // Use the corrected camelCase payload
+      failureMessage: 'Failed to update calendar event.',
+    );
+
+    // Server returns the updated event object inside the 'event' key.
+    final eventJson = responseBody['event'] as Map<String, dynamic>;
+    return CalendarEvent.fromJson(eventJson);
+  }
+
+  // NEW: Deletes a calendar event by ID (DELETE /api/events/calendar/:id)
+  Future<void> deleteCalendarEvent(int eventId) async {
+    await _sendAuthenticatedRequest(
+      'events/calendar/$eventId',
+      'DELETE',
+      failureMessage: 'Failed to delete calendar event.',
+    );
   }
 
   // --- Profile Management ---
@@ -695,6 +747,94 @@ class ApiService {
         .map((json) => Ticket.fromJson(json))
         .toList();
   }
+
+  // ------------------------------------------------------------------------
+  // --- NAVIGATION AND ROUTING METHODS ---
+  // ------------------------------------------------------------------------
+
+  /// Requests the shortest path from a starting POI (Staircase) to a destination POI.
+  /// NOTE: Signature updated to support cross-floor routing using POI IDs and floors.
+  Future<List<RouteCoordinate>> calculateRoute({
+    // ignore: non_constant_identifier_names
+    required String startPOI_ID, // NEW: e.g., "Stair 1 - Floor 5"
+    // ignore: non_constant_identifier_names
+    required String destinationPOI_ID, // EXISTING
+    required String startFloorID, // NEW: e.g., "level5"
+    required String destinationFloorID, // NEW: e.g., "level1"
+  }) async {
+    // --------------------------------------------------------------------
+    // IMPORTANT: The backend API call body must also be updated to match
+    // the new parameters. I am assuming a new structure here.
+    // --------------------------------------------------------------------
+    final body = {
+      'startPOI_ID': startPOI_ID, // Using the new starting POI
+      'destinationPOI_ID': destinationPOI_ID,
+      'startFloorID': startFloorID,
+      'destinationFloorID': destinationFloorID,
+      // We remove 'startCoords' and the single 'floorID' parameter
+    };
+
+    try {
+      // Calls the POST /api/v1/route endpoint
+      final response = await http.post(
+        Uri.parse('$kApiHost/api/v1/route'),
+        // Assuming your backend requires authentication headers for this route
+        headers: await _getAuthHeaders(isJson: true),
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final List<dynamic> pathJson = data['path'] as List<dynamic>;
+
+        // Map the list of JSON objects to a list of RouteCoordinate models
+        return pathJson
+            .map(
+              (jsonItem) =>
+                  RouteCoordinate.fromJson(jsonItem as Map<String, dynamic>),
+            )
+            .toList();
+      } else {
+        // Handle 404/400 errors from the server (e.g., POI not found)
+        final errorBody = _safeDecode(response.body, response.statusCode);
+        // The error key from the server is 'error' (e.g., {"error": "..."})
+        final errorMessage =
+            errorBody['error'] ??
+            'Route calculation failed with status: ${response.statusCode}.';
+
+        // Throw the specific error message returned by the Node.js backend
+        throw Exception(errorMessage);
+      }
+    } on http.ClientException {
+      throw Exception(
+        'Network error: Could not connect to the routing service.',
+      );
+    } catch (e) {
+      log('Routing API Error: $e', name: 'NavigationService');
+      rethrow;
+    }
+  }
+
+  // ---------------------------CLEAR CACHE DATA----------------------------------------
+
+  // Handles the token-authenticated request to clear server-side cache and
+  /// triggers local token deletion (logout) on success.
+  Future<void> clearCachedData() async {
+    // 1. Call the API endpoint to signal clearance (server check/cleanup)
+    await _sendAuthenticatedRequest(
+      'user/clear-cache', // The new endpoint
+      'POST',
+      body: {}, // Empty body required for POST type
+      failureMessage: 'Failed to signal server-side cache clearance.',
+    );
+
+    // 2. If the server call succeeds (200 OK), delete the local authentication token
+    //    and any stored profile data. This forces a logout.
+    await deleteToken();
+
+    // The AuthWrapper (main.dart) will handle the local data clearance upon state change.
+  }
+
   // ------------------------------------------------------------------------------
 
   // --- Announcement Management (Using New Helper) ---

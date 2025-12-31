@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../models/calendar_event.dart'; // Import the model
 import '../services/api_service.dart'; // Import API service for delete/edit logic
-import 'edit_calendar_event_screen.dart'; // FIX: Import the dedicated edit screen
+import 'edit_calendar_event_screen.dart'; // Import the dedicated edit screen
 
 // Define colors for consistency (assuming these are defined globally elsewhere)
 const Color kPrimaryColor = Color(0xFF1E88E5);
@@ -20,7 +20,6 @@ class ViewCalendarEventScreen extends StatelessWidget {
 
   // Helper to navigate to the dedicated edit screen.
   void _navigateToEdit(BuildContext context) async {
-    // FIX: Navigate to the independent EditCalendarEventScreen
     final result = await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => EditCalendarEventScreen(
@@ -29,23 +28,24 @@ class ViewCalendarEventScreen extends StatelessWidget {
       ),
     );
 
-    // If EditCalendarEventScreen returns an updated event (or true), signal refresh.
+    // If EditCalendarEventScreen returns an updated event, signal refresh.
     if (result != null && context.mounted) {
+      // FIX: If the result is a CalendarEvent, you could pass the updated event
+      // back to the parent screen to refresh data without a full fetch.
       Navigator.of(context).pop(true); // Signal ScheduleScreen to refresh
     }
   }
 
   // --- Core Delete Logic ---
   Future<void> _deleteEvent(BuildContext context) async {
-    // FIX: Using Provider.of directly inside the try block
-    Provider.of<ApiService>(context, listen: false);
+    // FIX 3: Get the ApiService instance OUTSIDE of the try block.
+    final apiService = Provider.of<ApiService>(context, listen: false);
+
+    // Show a loading indicator/dialog if needed, then execute delete logic
 
     try {
-      // NOTE: Call the DELETE API route for calendar events here
-      // await apiService.deleteCalendarEvent(event.id.toString());
-
-      // MOCK DELETE (replace with actual API call)
-      await Future.delayed(const Duration(milliseconds: 500));
+      // FIX 1: Replace MOCK DELETE with the actual API call
+      await apiService.deleteCalendarEvent(event.id);
 
       // Close the view screen and signal success/refresh to the previous screen
       if (context.mounted) {
@@ -55,10 +55,13 @@ class ViewCalendarEventScreen extends StatelessWidget {
             backgroundColor: Colors.red,
           ),
         );
-        Navigator.of(context).pop(true); // Signal refresh
+        // Pop this screen and pass 'true' to indicate a list refresh is needed
+        Navigator.of(context).pop(true);
       }
     } catch (e) {
       if (context.mounted) {
+        // Log the error detail for debugging
+        print('Error deleting event: $e');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('❌ Failed to delete event: ${e.toString()}'),
@@ -117,8 +120,11 @@ class ViewCalendarEventScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String timeRange =
-        '${DateFormat('h:mm a').format(event.startDate)} - ${DateFormat('h:mm a').format(event.endDate)}';
+    // FIX 2: Handle event.endDate being nullable. If null, show a single time.
+    final String timeRange = event.endDate != null
+        ? '${DateFormat('h:mm a').format(event.startDate)} - ${DateFormat('h:mm a').format(event.endDate!)}'
+        : DateFormat('h:mm a').format(event.startDate);
+
     final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -183,13 +189,19 @@ class ViewCalendarEventScreen extends StatelessWidget {
                       context,
                       Icons.calendar_today,
                       'Date',
-                      DateFormat('EEEE, MMMM d, yyyy').format(event.startDate),
+                      // Displays start and end date if different, otherwise just start date
+                      event.endDate != null &&
+                              event.startDate.day != event.endDate!.day
+                          ? '${DateFormat('EEEE, MMMM d, yyyy').format(event.startDate)} - ${DateFormat('EEEE, MMMM d, yyyy').format(event.endDate!)}'
+                          : DateFormat(
+                              'EEEE, MMMM d, yyyy',
+                            ).format(event.startDate),
                     ),
                     _buildDetailRow(
                       context,
                       Icons.access_time_rounded,
                       'Time Range',
-                      timeRange,
+                      timeRange, // Uses the fixed timeRange variable
                     ),
                     _buildDetailRow(
                       context,
@@ -267,7 +279,8 @@ class ViewCalendarEventScreen extends StatelessWidget {
             TextButton(
               onPressed: () {
                 Navigator.of(dialogCtx).pop(); // Close the alert
-                _deleteEvent(context); // Execute the delete action
+                // Use the root context to ensure Provider is available
+                _deleteEvent(context);
               },
               style: TextButton.styleFrom(foregroundColor: Colors.red),
               child: const Text('Delete'),

@@ -21,13 +21,14 @@ android {
 
     defaultConfig {
         applicationId = "com.example.chrono_application"
-        // Ensure this line is present and set to 21 or higher.
+        // Ensure this line is present and set to 21 or higher for coroutines and modern libraries.
         minSdk = 21 
         
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
+    
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.
@@ -39,4 +40,16 @@ android {
 
 flutter {
     source = "../.."
+}
+
+// === DEPENDENCIES BLOCK (FIXED KOTLIN DSL SYNTAX) ===
+dependencies {
+    // Add Coroutines support for asynchronous programming in Kotlin (REQUIRED for MainActivity.kt logic)
+    // Corrected from Groovy (") to Kotlin DSL (())
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3") 
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
+    // Placeholder for ChronosNav SDK (You must replace this with the actual dependency)
+    // implementation("com.chronosnav:android-sdk:1.0.0") 
+    // implementation(files("libs/chronosnav-sdk.aar")) 
 }

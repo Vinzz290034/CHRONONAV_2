@@ -93,6 +93,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // CORRECT: This simply calls the required external callback.
   void _viewCalendarEventScreen() {
+    // 1. Pop the ProfileScreen off the navigation stack.
+    // This will return the user to the Settings screen context,
+    // which will then be ignored when the root AuthWrapper rebuilds.
+    Navigator.of(context).pop();
+
+    // 2. Change the root application state to Dashboard.
     widget.onViewCalendarEventsTap();
   }
 
@@ -323,14 +329,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onTap: widget.onChangePasswordTap,
                 ),
 
-                // 2. Clear Cached Data
-                _buildActionItem(
-                  context,
-                  icon: Icons.cleaning_services_outlined,
-                  title: 'Clear Cached Data',
-                  onTap: widget.onClearCachedDataTap,
-                ),
-
                 // 3. Deactivate Account
                 _buildActionItem(
                   context,
@@ -369,7 +367,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _buildActionItem(
                   context,
                   icon: Icons.feedback_outlined,
-                  title: 'Send Feedback',
+                  title: 'FeedBack Module',
                   onTap: _navigateToFeedbackScreen,
                   showDivider: false,
                 ),

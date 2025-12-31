@@ -167,11 +167,6 @@ class SettingsScreen extends StatelessWidget {
     final Color defaultTitleColor = Theme.of(
       context,
     ).textTheme.titleMedium!.color!;
-    // FIX: Replaced withOpacity
-    final Color infoIconColor = Theme.of(
-      context,
-    ).colorScheme.onSurface.withAlpha(0x80); // Alpha 0x80 ≈ Opacity 0.5
-
     // Determine if the switch should be ON based on the ThemeMode state
     final bool isDarkMode = currentThemeMode == ThemeMode.dark;
 
@@ -210,42 +205,14 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 _buildSettingsItem(
                   context,
-                  icon: Icons.shield_rounded,
-                  title: 'Security',
-                  onTap: onSecurityTap,
-                  iconColor: defaultIconColor,
-                  titleColor: defaultTitleColor,
-                  trailingWidget: Icon(
-                    Icons.info_outline_rounded,
-                    color: infoIconColor,
-                    size: 20,
-                  ),
-                ),
-                _buildSettingsItem(
-                  context,
                   icon: Icons.lock_rounded,
                   title: 'Change Password',
                   onTap: onChangePasswordTap,
                   iconColor: defaultIconColor,
                   titleColor: defaultTitleColor,
                 ),
-                _buildSettingsItem(
-                  context,
-                  icon: Icons.policy_rounded,
-                  title: 'Privacy',
-                  onTap: onPrivacyTap,
-                  iconColor: defaultIconColor,
-                  titleColor: defaultTitleColor,
-                  trailingWidget: Icon(
-                    Icons.info_outline_rounded,
-                    color: infoIconColor,
-                    size: 20,
-                  ),
-                  showDivider: false, // Last item in group, no divider
-                ),
               ],
             ),
-
             // --- 2. App Section (Grouped) ---
             _buildSettingsGroup(
               context: context,

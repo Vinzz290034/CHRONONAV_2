@@ -1,0 +1,13 @@
+# Node
+node_modules/
+**/node_modules/
+
+# Env
+.env
+
+# Flutter
+.dart_tool/
+build/
+ios/Pods/
+android/.gradle/
+android/app/build/

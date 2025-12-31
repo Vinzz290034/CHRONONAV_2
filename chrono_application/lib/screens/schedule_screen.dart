@@ -326,7 +326,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'My Schedule',
+                    'Schedule Viewer',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.bold,
                       color: _textColor(context),
@@ -1374,7 +1374,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                   title: Row(
                     children: [
                       Text(
-                        'My Schedule',
+                        'Schedule Viewer',
                         style: TextStyle(
                           color: _textColor(context),
                           fontWeight: FontWeight.bold,
